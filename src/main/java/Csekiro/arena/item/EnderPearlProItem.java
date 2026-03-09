@@ -5,6 +5,7 @@ import net.minecraft.component.type.UseRemainderComponent;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.ItemUsage;
 import net.minecraft.particle.ParticleTypes;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
@@ -59,7 +60,7 @@ public class EnderPearlProItem extends Item {
         // 原位置：音效 + 粒子
         playTeleportOriginEffects(serverWorld, player, originPos);
 
-        // 先给原物品上冷却，避免后面 use_remainder 把手里的物品换成别的
+        // 先给原物品上冷却，避免后面手中物品被替换后冷却错位
         player.getItemCooldownManager().set(usedStack, COOLDOWN_TICKS);
 
         // 传送
@@ -69,10 +70,13 @@ public class EnderPearlProItem extends Item {
         // 目标位置：音效
         playTeleportDestinationSound(serverWorld, targetPos);
 
-        // 原版消耗逻辑：支持 use_remainder，并增加 used 统计
-        consumeWithVanillaUseRemainder(player, hand);
+        // 消耗并处理 use_remainder
+        ItemStack resultStack = consumeAndHandleUseRemainder(player, hand);
 
-        return ActionResult.SUCCESS;
+        // 直接写回手中物品，避免依赖返回值携带新栈
+        player.setStackInHand(hand, resultStack);
+
+        return ActionResult.SUCCESS_SERVER.noIncrementStat();
     }
 
     private static Vec3d findTeleportPos(World world, PlayerEntity user, BlockHitResult hit) {
@@ -173,39 +177,26 @@ public class EnderPearlProItem extends Item {
         );
     }
 
-    private static ItemStack consumeWithVanillaUseRemainder(PlayerEntity player, Hand hand) {
+    private static ItemStack consumeAndHandleUseRemainder(PlayerEntity player, Hand hand) {
         ItemStack stack = player.getStackInHand(hand);
         Item usedItem = stack.getItem();
-        int oldCount = stack.getCount();
 
         UseRemainderComponent useRemainder = stack.get(DataComponentTypes.USE_REMAINDER);
         ItemStack resultStack;
 
         if (useRemainder != null) {
-            resultStack = useRemainder.convert(
+            // 原版交换栈逻辑：消耗输入栈，并把余留物放回手中/背包/地上
+            resultStack = ItemUsage.exchangeStack(
                     stack,
-                    oldCount,
-                    player.isCreative(),
-                    remainderStack -> insertOrDrop(player, remainderStack)
+                    player,
+                    useRemainder.convertInto().copy()
             );
         } else {
             stack.decrementUnlessCreative(1, player);
             resultStack = stack;
         }
 
-        player.setStackInHand(hand, resultStack);
         player.incrementStat(Stats.USED.getOrCreateStat(usedItem));
-
         return resultStack;
-    }
-
-    private static void insertOrDrop(PlayerEntity player, ItemStack stack) {
-        if (stack.isEmpty()) {
-            return;
-        }
-
-        if (!player.getInventory().insertStack(stack)) {
-            player.dropItem(stack, false);
-        }
     }
 }
