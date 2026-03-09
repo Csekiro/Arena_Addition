@@ -1,5 +1,7 @@
 package Csekiro.arena.item;
 
+import net.minecraft.block.Block;
+import net.minecraft.block.WallBlock;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.UseRemainderComponent;
 import net.minecraft.entity.player.PlayerEntity;
@@ -90,15 +92,17 @@ public class EnderPearlProItem extends Item {
     }
 
     private static Vec3d findTeleportPos(World world, PlayerEntity user, BlockHitResult hit) {
-        Vec3d base = computePreciseTeleportPos(user, hit);
         Direction side = hit.getSide();
+        boolean keepOriginalWallSideLogic = shouldKeepOriginalWallSideLogic(world, hit);
+
+        Vec3d base = computeBaseTeleportPos(world, user, hit);
 
         // 原始基准点能传就直接传
         if (canTeleportTo(world, user, base)) {
             return base;
         }
 
-        // 点击上表面：若不合法，则向后退一段距离
+        // 点击上表面：若不合法，则向“玩家这边”回退一段距离
         if (side == Direction.UP) {
             Vec3d backed = computeTopSurfaceBackoffPos(user, hit, base);
             if (canTeleportTo(world, user, backed)) {
@@ -106,23 +110,23 @@ public class EnderPearlProItem extends Item {
             }
         }
 
-        // 点击侧面：若不合法，先整体下移；下移后仍不合法，则直接尝试后一格方块中心
-        if (side == Direction.NORTH || side == Direction.SOUTH
-                || side == Direction.EAST || side == Direction.WEST) {
-
-            // 第一次整体下移
+        // 点击侧面
+        if (isHorizontal(side)) {
             Vec3d droppedBase = base.add(0.0D, -SIDE_INITIAL_DROP, 0.0D);
 
             if (canTeleportTo(world, user, droppedBase)) {
                 return droppedBase;
             }
 
-            Vec3d droppedCentered = computeSideCenteredPos(hit, droppedBase);
-            if (canTeleportTo(world, user, droppedCentered)) {
-                return droppedCentered;
+            // 围墙：保留原有点击侧面逻辑，继续尝试“吸附到后一格中心”
+            if (keepOriginalWallSideLogic) {
+                Vec3d droppedCentered = computeSideCenteredPos(hit, droppedBase);
+                if (canTeleportTo(world, user, droppedCentered)) {
+                    return droppedCentered;
+                }
             }
 
-            // 继续逐步向下试探；每个下移候选点不合法时，再尝试吸到后一格中心
+            // 继续逐步向下试探
             for (int i = 1; i <= SIDE_DOWN_SEARCH_TIMES; i++) {
                 Vec3d lowered = droppedBase.add(0.0D, -SIDE_DOWN_SEARCH_STEP * i, 0.0D);
 
@@ -130,14 +134,17 @@ public class EnderPearlProItem extends Item {
                     return lowered;
                 }
 
-                Vec3d loweredCentered = computeSideCenteredPos(hit, lowered);
-                if (canTeleportTo(world, user, loweredCentered)) {
-                    return loweredCentered;
+                // 围墙保持原有逻辑：每次下移后再尝试吸到后一格中心
+                if (keepOriginalWallSideLogic) {
+                    Vec3d loweredCentered = computeSideCenteredPos(hit, lowered);
+                    if (canTeleportTo(world, user, loweredCentered)) {
+                        return loweredCentered;
+                    }
                 }
             }
         }
 
-        // 点击方块下表面时，继续往下试几次，避免窒息
+        // 点击下表面时，继续往下试几次，避免窒息
         if (side == Direction.DOWN) {
             for (int i = 1; i <= DOWN_SEARCH_TIMES; i++) {
                 Vec3d lowered = base.add(0.0D, -DOWN_SEARCH_STEP * i, 0.0D);
@@ -150,33 +157,62 @@ public class EnderPearlProItem extends Item {
         return null;
     }
 
-    private static Vec3d computePreciseTeleportPos(PlayerEntity user, BlockHitResult hit) {
-        Vec3d hitPos = hit.getPos(); // 十字准星实际命中的具体坐标
+    /**
+     * 新的目标点选取逻辑：
+     * 1. 点击上表面：该方块上表面中心
+     * 2. 点击下表面：该方块底面中心
+     * 3. 点击普通方块侧面：点击面外侧那一格的中心位置
+     * 4. 点击围墙侧面：保持原有精确点击侧面逻辑
+     */
+    private static Vec3d computeBaseTeleportPos(World world, PlayerEntity user, BlockHitResult hit) {
+        Direction side = hit.getSide();
+        BlockPos clickedPos = hit.getBlockPos();
+
+        if (side == Direction.UP) {
+            return new Vec3d(
+                    clickedPos.getX() + 0.5D,
+                    clickedPos.getY() + 1.0D + EPSILON,
+                    clickedPos.getZ() + 0.5D
+            );
+        }
+
+        if (side == Direction.DOWN) {
+            return new Vec3d(
+                    clickedPos.getX() + 0.5D,
+                    clickedPos.getY() - user.getHeight() - CEILING_EXTRA_DROP,
+                    clickedPos.getZ() + 0.5D
+            );
+        }
+
+        // 围墙侧面：保留原有逻辑
+        if (shouldKeepOriginalWallSideLogic(world, hit)) {
+            return computeOriginalSidePrecisePos(user, hit);
+        }
+
+        // 普通方块侧面：移至点击面外侧那一格的中心
+        BlockPos targetBlock = clickedPos.offset(side);
+        return new Vec3d(
+                targetBlock.getX() + 0.5D,
+                targetBlock.getY(),
+                targetBlock.getZ() + 0.5D
+        );
+    }
+
+    /**
+     * 围墙侧面保持原有逻辑：按准星实际命中点，加上玩家半宽向外偏移。
+     */
+    private static Vec3d computeOriginalSidePrecisePos(PlayerEntity user, BlockHitResult hit) {
+        Vec3d hitPos = hit.getPos();
         Direction side = hit.getSide();
 
-        double playerHeight = user.getHeight();
         double halfWidth = user.getWidth() / 2.0D;
         double outward = halfWidth + EPSILON;
 
-        return switch (side) {
-            case UP -> new Vec3d(
-                    hitPos.x,
-                    hitPos.y + EPSILON,
-                    hitPos.z
-            );
-
-            case DOWN -> new Vec3d(
-                    hitPos.x,
-                    hitPos.y - playerHeight - CEILING_EXTRA_DROP,
-                    hitPos.z
-            );
-
-            case NORTH, SOUTH, EAST, WEST -> new Vec3d(
-                    hitPos.x + side.getOffsetX() * outward,
-                    hitPos.y,
-                    hitPos.z + side.getOffsetZ() * outward
-            );
-        };
+        return new Vec3d(
+                hitPos.x + side.getOffsetX() * outward,
+                hitPos.y,
+                hitPos.z + side.getOffsetZ() * outward
+        );
     }
 
     /**
@@ -210,8 +246,8 @@ public class EnderPearlProItem extends Item {
     }
 
     /**
-     * 点击侧面时，若当前候选点不合法，则尝试将 x/z 吸附到点击面外侧那一格的中心。
-     * y 保持当前候选高度，不硬改成方块几何中心，避免脚底高度发癫。
+     * 围墙侧面时，若当前候选点不合法，则尝试将 x/z 吸附到点击面外侧那一格的中心。
+     * y 保持当前候选高度。
      */
     private static Vec3d computeSideCenteredPos(BlockHitResult hit, Vec3d base) {
         BlockPos centerBlock = hit.getBlockPos().offset(hit.getSide());
@@ -221,6 +257,22 @@ public class EnderPearlProItem extends Item {
                 base.y,
                 centerBlock.getZ() + 0.5D
         );
+    }
+
+    private static boolean shouldKeepOriginalWallSideLogic(World world, BlockHitResult hit) {
+        if (!isHorizontal(hit.getSide())) {
+            return false;
+        }
+
+        Block block = world.getBlockState(hit.getBlockPos()).getBlock();
+        return block instanceof WallBlock;
+    }
+
+    private static boolean isHorizontal(Direction side) {
+        return side == Direction.NORTH
+                || side == Direction.SOUTH
+                || side == Direction.EAST
+                || side == Direction.WEST;
     }
 
     private static boolean canTeleportTo(World world, PlayerEntity user, Vec3d targetPos) {
