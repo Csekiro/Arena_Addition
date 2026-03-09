@@ -27,8 +27,14 @@ public class EnderPearlProItem extends Item {
 
     private static final double EPSILON = 0.001D;
     private static final double CEILING_EXTRA_DROP = 0.15D; // 点击下表面时额外下移，防窒息
+
     private static final double DOWN_SEARCH_STEP = 0.10D;
     private static final int DOWN_SEARCH_TIMES = 8;
+
+    // 新增：点击侧面但当前位置不合法时，先整体下移一段距离
+    private static final double SIDE_INITIAL_DROP = 0.80D;
+    private static final double SIDE_DOWN_SEARCH_STEP = 0.10D;
+    private static final int SIDE_DOWN_SEARCH_TIMES = 10;
 
     public EnderPearlProItem(Settings settings) {
         super(settings);
@@ -82,12 +88,33 @@ public class EnderPearlProItem extends Item {
     private static Vec3d findTeleportPos(World world, PlayerEntity user, BlockHitResult hit) {
         Vec3d base = computePreciseTeleportPos(user, hit);
 
+        // 原始基准点能传就直接传
         if (canTeleportTo(world, user, base)) {
             return base;
         }
 
+        Direction side = hit.getSide();
+
+        // 点击侧面：若不合法，先整体下移一段距离，再继续向下试探
+        if (side == Direction.NORTH || side == Direction.SOUTH
+                || side == Direction.EAST || side == Direction.WEST) {
+
+            Vec3d droppedBase = base.add(0.0D, -SIDE_INITIAL_DROP, 0.0D);
+
+            if (canTeleportTo(world, user, droppedBase)) {
+                return droppedBase;
+            }
+
+            for (int i = 1; i <= SIDE_DOWN_SEARCH_TIMES; i++) {
+                Vec3d lowered = droppedBase.add(0.0D, -SIDE_DOWN_SEARCH_STEP * i, 0.0D);
+                if (canTeleportTo(world, user, lowered)) {
+                    return lowered;
+                }
+            }
+        }
+
         // 点击方块下表面时，继续往下试几次，避免窒息
-        if (hit.getSide() == Direction.DOWN) {
+        if (side == Direction.DOWN) {
             for (int i = 1; i <= DOWN_SEARCH_TIMES; i++) {
                 Vec3d lowered = base.add(0.0D, -DOWN_SEARCH_STEP * i, 0.0D);
                 if (canTeleportTo(world, user, lowered)) {
