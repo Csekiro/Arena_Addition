@@ -16,6 +16,7 @@ import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
@@ -31,10 +32,13 @@ public class EnderPearlProItem extends Item {
     private static final double DOWN_SEARCH_STEP = 0.10D;
     private static final int DOWN_SEARCH_TIMES = 8;
 
-    // 新增：点击侧面但当前位置不合法时，先整体下移一段距离
-    private static final double SIDE_INITIAL_DROP = 0.80D;
+    // 点击侧面但当前位置不合法时，先整体下移一段距离
+    private static final double SIDE_INITIAL_DROP = 0.60D;
     private static final double SIDE_DOWN_SEARCH_STEP = 0.10D;
     private static final int SIDE_DOWN_SEARCH_TIMES = 10;
+
+    // 点击上表面但当前位置不合法时，向后退一段距离
+    private static final double UP_BACKOFF_DISTANCE = 0.60D;
 
     public EnderPearlProItem(Settings settings) {
         super(settings);
@@ -87,28 +91,48 @@ public class EnderPearlProItem extends Item {
 
     private static Vec3d findTeleportPos(World world, PlayerEntity user, BlockHitResult hit) {
         Vec3d base = computePreciseTeleportPos(user, hit);
+        Direction side = hit.getSide();
 
         // 原始基准点能传就直接传
         if (canTeleportTo(world, user, base)) {
             return base;
         }
 
-        Direction side = hit.getSide();
+        // 点击上表面：若不合法，则向后退一段距离
+        if (side == Direction.UP) {
+            Vec3d backed = computeTopSurfaceBackoffPos(user, hit, base);
+            if (canTeleportTo(world, user, backed)) {
+                return backed;
+            }
+        }
 
-        // 点击侧面：若不合法，先整体下移一段距离，再继续向下试探
+        // 点击侧面：若不合法，先整体下移；下移后仍不合法，则直接尝试后一格方块中心
         if (side == Direction.NORTH || side == Direction.SOUTH
                 || side == Direction.EAST || side == Direction.WEST) {
 
+            // 第一次整体下移
             Vec3d droppedBase = base.add(0.0D, -SIDE_INITIAL_DROP, 0.0D);
 
             if (canTeleportTo(world, user, droppedBase)) {
                 return droppedBase;
             }
 
+            Vec3d droppedCentered = computeSideCenteredPos(hit, droppedBase);
+            if (canTeleportTo(world, user, droppedCentered)) {
+                return droppedCentered;
+            }
+
+            // 继续逐步向下试探；每个下移候选点不合法时，再尝试吸到后一格中心
             for (int i = 1; i <= SIDE_DOWN_SEARCH_TIMES; i++) {
                 Vec3d lowered = droppedBase.add(0.0D, -SIDE_DOWN_SEARCH_STEP * i, 0.0D);
+
                 if (canTeleportTo(world, user, lowered)) {
                     return lowered;
+                }
+
+                Vec3d loweredCentered = computeSideCenteredPos(hit, lowered);
+                if (canTeleportTo(world, user, loweredCentered)) {
+                    return loweredCentered;
                 }
             }
         }
@@ -153,6 +177,50 @@ public class EnderPearlProItem extends Item {
                     hitPos.z + side.getOffsetZ() * outward
             );
         };
+    }
+
+    /**
+     * 点击上表面时，若基础落点不合法，则向“玩家这边”回退一段距离。
+     */
+    private static Vec3d computeTopSurfaceBackoffPos(PlayerEntity user, BlockHitResult hit, Vec3d base) {
+        Vec3d hitPos = hit.getPos();
+
+        Vec3d back = new Vec3d(
+                user.getX() - hitPos.x,
+                0.0D,
+                user.getZ() - hitPos.z
+        );
+
+        if (back.lengthSquared() < 1.0E-6D) {
+            Direction facing = user.getHorizontalFacing();
+            back = new Vec3d(
+                    -facing.getOffsetX(),
+                    0.0D,
+                    -facing.getOffsetZ()
+            );
+        }
+
+        back = back.normalize();
+
+        return base.add(
+                back.x * UP_BACKOFF_DISTANCE,
+                0.0D,
+                back.z * UP_BACKOFF_DISTANCE
+        );
+    }
+
+    /**
+     * 点击侧面时，若当前候选点不合法，则尝试将 x/z 吸附到点击面外侧那一格的中心。
+     * y 保持当前候选高度，不硬改成方块几何中心，避免脚底高度发癫。
+     */
+    private static Vec3d computeSideCenteredPos(BlockHitResult hit, Vec3d base) {
+        BlockPos centerBlock = hit.getBlockPos().offset(hit.getSide());
+
+        return new Vec3d(
+                centerBlock.getX() + 0.5D,
+                base.y,
+                centerBlock.getZ() + 0.5D
+        );
     }
 
     private static boolean canTeleportTo(World world, PlayerEntity user, Vec3d targetPos) {
@@ -212,7 +280,6 @@ public class EnderPearlProItem extends Item {
         ItemStack resultStack;
 
         if (useRemainder != null) {
-            // 原版交换栈逻辑：消耗输入栈，并把余留物放回手中/背包/地上
             resultStack = ItemUsage.exchangeStack(
                     stack,
                     player,
