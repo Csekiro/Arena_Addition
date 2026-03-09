@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "arena",
+  "version": "${version}",
+  "name": "Arena",
+  "description": "",
+  "authors": ["Csekiro"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/arena/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-datagen": [
+      "Csekiro.arena.client.ArenaDataGenerator"
+    ],
+    "main": [
+      "Csekiro.arena.Arena"
+    ]
+  },
+  "mixins": [
+    "arena.mixins.json",
+    {
+      "config": "arena.client.mixins.json",
+      "environment": "*"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
