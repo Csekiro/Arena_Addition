@@ -64,39 +64,59 @@ public class EnderPearlProItem extends Item implements PolymerItem {
 
     @Override
     public ActionResult use(World world, PlayerEntity user, Hand hand) {
-        HitResult hitResult = user.raycast(MAX_DISTANCE, 0.0F, false);
-
-        if (!(hitResult instanceof BlockHitResult blockHit) || hitResult.getType() != HitResult.Type.BLOCK) {
-            return ActionResult.FAIL;
-        }
-
+        // 客户端先接受这次交互，别在客户端先把它判死
         if (world.isClient()) {
-            return ActionResult.SUCCESS;
-        }
-
-        Vec3d targetPos = findTeleportPos(world, user, blockHit);
-        if (targetPos == null) {
-            return ActionResult.FAIL;
+            return ActionResult.CONSUME;
         }
 
         ServerPlayerEntity player = (ServerPlayerEntity) user;
         ServerWorld serverWorld = (ServerWorld) world;
-        ItemStack usedStack = player.getStackInHand(hand);
 
+        HitResult hitResult = user.raycast(MAX_DISTANCE, 0.0F, false);
+
+        // 没打到方块：不执行功能，但立刻强制同步手上的槽位，消掉幽灵物品
+        if (!(hitResult instanceof BlockHitResult blockHit) || hitResult.getType() != HitResult.Type.BLOCK) {
+            forceInventorySync(player);
+            return ActionResult.FAIL;
+        }
+
+        Vec3d targetPos = findTeleportPos(world, user, blockHit);
+
+        // 没找到合法落点：同样强制同步
+        if (targetPos == null) {
+            forceInventorySync(player);
+            return ActionResult.FAIL;
+        }
+
+        ItemStack usedStack = player.getStackInHand(hand);
         Vec3d originPos = new Vec3d(player.getX(), player.getY(), player.getZ());
 
+        // 原位置：音效 + 粒子
         playTeleportOriginEffects(serverWorld, player, originPos);
+
+        // 冷却
         player.getItemCooldownManager().set(usedStack, COOLDOWN_TICKS);
 
+        // 传送
         player.requestTeleport(targetPos.x, targetPos.y, targetPos.z);
         player.setVelocity(0.0D, 0.0D, 0.0D);
 
+        // 目标位置：音效
         playTeleportDestinationSound(serverWorld, targetPos);
 
+        // 消耗并处理 use_remainder
         ItemStack resultStack = consumeAndHandleUseRemainder(player, hand);
         player.setStackInHand(hand, resultStack);
 
+        // 成功后也主动同步一次，省得 Polymer 映射栈和真实服务端栈短暂错位
+        forceInventorySync(player);
+
         return ActionResult.SUCCESS_SERVER.noIncrementStat();
+    }
+
+    private static void forceInventorySync(ServerPlayerEntity player) {
+        // playerScreenHandler 是玩家自身背包/热栏的处理器
+        player.playerScreenHandler.syncState();
     }
 
     private static Vec3d findTeleportPos(World world, PlayerEntity user, BlockHitResult hit) {
