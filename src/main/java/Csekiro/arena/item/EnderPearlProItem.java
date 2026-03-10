@@ -1,14 +1,18 @@
 package Csekiro.arena.item;
 
+import eu.pb4.polymer.core.api.item.PolymerItem;
 import net.minecraft.block.Block;
 import net.minecraft.block.FenceBlock;
 import net.minecraft.block.WallBlock;
 import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.NbtComponent;
 import net.minecraft.component.type.UseRemainderComponent;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemUsage;
+import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
 import net.minecraft.particle.ParticleTypes;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
@@ -24,27 +28,38 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
+import xyz.nucleoid.packettweaker.PacketContext;
 
-public class EnderPearlProItem extends Item {
+public class EnderPearlProItem extends Item implements PolymerItem {
     private static final double MAX_DISTANCE = 200.0D;
-    private static final int COOLDOWN_TICKS = 20; // 1 秒
+    private static final int COOLDOWN_TICKS = 20;
 
     private static final double EPSILON = 0.001D;
-    private static final double CEILING_EXTRA_DROP = 0.15D; // 点击下表面时额外下移，防窒息
+    private static final double CEILING_EXTRA_DROP = 0.15D;
 
     private static final double DOWN_SEARCH_STEP = 0.10D;
     private static final int DOWN_SEARCH_TIMES = 8;
 
-    // 点击侧面但当前位置不合法时，先整体下移一段距离
     private static final double SIDE_INITIAL_DROP = 0.60D;
     private static final double SIDE_DOWN_SEARCH_STEP = 0.10D;
     private static final int SIDE_DOWN_SEARCH_TIMES = 10;
 
-    // 点击上表面但当前位置不合法时，向后退一段距离
     private static final double UP_BACKOFF_DISTANCE = 0.60D;
 
     public EnderPearlProItem(Settings settings) {
         super(settings);
+    }
+
+    @Override
+    public Item getPolymerItem(ItemStack itemStack, PacketContext context) {
+        return Items.BONE;
+    }
+
+    @Override
+    public void modifyBasePolymerItemStack(ItemStack out, ItemStack stack, PacketContext context) {
+        NbtCompound customData = new NbtCompound();
+        customData.putBoolean("advanced_tp", true);
+        out.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(customData));
     }
 
     @Override
@@ -70,23 +85,15 @@ public class EnderPearlProItem extends Item {
 
         Vec3d originPos = new Vec3d(player.getX(), player.getY(), player.getZ());
 
-        // 原位置：音效 + 粒子
         playTeleportOriginEffects(serverWorld, player, originPos);
-
-        // 先给原物品上冷却，避免后面手中物品被替换后冷却错位
         player.getItemCooldownManager().set(usedStack, COOLDOWN_TICKS);
 
-        // 传送
         player.requestTeleport(targetPos.x, targetPos.y, targetPos.z);
         player.setVelocity(0.0D, 0.0D, 0.0D);
 
-        // 目标位置：音效
         playTeleportDestinationSound(serverWorld, targetPos);
 
-        // 消耗并处理 use_remainder
         ItemStack resultStack = consumeAndHandleUseRemainder(player, hand);
-
-        // 直接写回手中物品，避免依赖返回值携带新栈
         player.setStackInHand(hand, resultStack);
 
         return ActionResult.SUCCESS_SERVER.noIncrementStat();
@@ -95,7 +102,6 @@ public class EnderPearlProItem extends Item {
     private static Vec3d findTeleportPos(World world, PlayerEntity user, BlockHitResult hit) {
         Direction side = hit.getSide();
 
-        // 点击上表面：传到该方块上表面中心
         if (side == Direction.UP) {
             Vec3d base = computeTopCenterPos(hit);
             if (canTeleportTo(world, user, base)) {
@@ -110,7 +116,6 @@ public class EnderPearlProItem extends Item {
             return null;
         }
 
-        // 点击下表面：传到该方块底面中心
         if (side == Direction.DOWN) {
             Vec3d base = computeBottomCenterPos(user, hit);
             if (canTeleportTo(world, user, base)) {
@@ -127,10 +132,8 @@ public class EnderPearlProItem extends Item {
             return null;
         }
 
-        // 点击侧面
         if (isHorizontal(side)) {
             if (isFenceLikeBlock(world, hit)) {
-                // 栅栏类：先完整跑“精确落点逻辑”，失败后再跑“中心逻辑”
                 Vec3d preciseResult = trySidePreciseLogic(world, user, hit);
                 if (preciseResult != null) {
                     return preciseResult;
@@ -143,7 +146,6 @@ public class EnderPearlProItem extends Item {
 
                 return null;
             } else {
-                // 普通方块侧面：直接使用后一格中心逻辑
                 Vec3d centeredResult = trySideCenteredLogic(world, user, hit);
                 if (centeredResult != null) {
                     return centeredResult;
@@ -156,12 +158,6 @@ public class EnderPearlProItem extends Item {
         return null;
     }
 
-    /**
-     * 栅栏类点击侧面时，先使用原有“精确侧面落点”逻辑：
-     * 1. 精确基础点
-     * 2. 整体下移
-     * 3. 逐步下移
-     */
     private static Vec3d trySidePreciseLogic(World world, PlayerEntity user, BlockHitResult hit) {
         Vec3d base = computeOriginalSidePrecisePos(user, hit);
 
@@ -184,11 +180,6 @@ public class EnderPearlProItem extends Item {
         return null;
     }
 
-    /**
-     * 点击侧面时的“中心逻辑”：
-     * 目标为点击面外侧那一格的中心，
-     * 然后同样进行下移/逐步下移搜索。
-     */
     private static Vec3d trySideCenteredLogic(World world, PlayerEntity user, BlockHitResult hit) {
         Vec3d base = computeSideCenteredBasePos(hit);
 
@@ -211,33 +202,16 @@ public class EnderPearlProItem extends Item {
         return null;
     }
 
-    /**
-     * 点击上表面：该方块上表面中心
-     */
     private static Vec3d computeTopCenterPos(BlockHitResult hit) {
         BlockPos pos = hit.getBlockPos();
-        return new Vec3d(
-                pos.getX() + 0.5D,
-                pos.getY() + 1.0D + EPSILON,
-                pos.getZ() + 0.5D
-        );
+        return new Vec3d(pos.getX() + 0.5D, pos.getY() + 1.0D + EPSILON, pos.getZ() + 0.5D);
     }
 
-    /**
-     * 点击下表面：该方块底面中心
-     */
     private static Vec3d computeBottomCenterPos(PlayerEntity user, BlockHitResult hit) {
         BlockPos pos = hit.getBlockPos();
-        return new Vec3d(
-                pos.getX() + 0.5D,
-                pos.getY() - user.getHeight() - CEILING_EXTRA_DROP,
-                pos.getZ() + 0.5D
-        );
+        return new Vec3d(pos.getX() + 0.5D, pos.getY() - user.getHeight() - CEILING_EXTRA_DROP, pos.getZ() + 0.5D);
     }
 
-    /**
-     * 栅栏类侧面：保留原有“精确命中点 + 玩家半宽外推”逻辑
-     */
     private static Vec3d computeOriginalSidePrecisePos(PlayerEntity user, BlockHitResult hit) {
         Vec3d hitPos = hit.getPos();
         Direction side = hit.getSide();
@@ -252,46 +226,23 @@ public class EnderPearlProItem extends Item {
         );
     }
 
-    /**
-     * 普通侧面/栅栏类兜底：点击面外侧那一格的中心
-     */
     private static Vec3d computeSideCenteredBasePos(BlockHitResult hit) {
         BlockPos targetBlock = hit.getBlockPos().offset(hit.getSide());
-        return new Vec3d(
-                targetBlock.getX() + 0.5D,
-                targetBlock.getY(),
-                targetBlock.getZ() + 0.5D
-        );
+        return new Vec3d(targetBlock.getX() + 0.5D, targetBlock.getY(), targetBlock.getZ() + 0.5D);
     }
 
-    /**
-     * 点击上表面时，若基础落点不合法，则向“玩家这边”回退一段距离。
-     */
     private static Vec3d computeTopSurfaceBackoffPos(PlayerEntity user, BlockHitResult hit, Vec3d base) {
         Vec3d hitPos = hit.getPos();
 
-        Vec3d back = new Vec3d(
-                user.getX() - hitPos.x,
-                0.0D,
-                user.getZ() - hitPos.z
-        );
+        Vec3d back = new Vec3d(user.getX() - hitPos.x, 0.0D, user.getZ() - hitPos.z);
 
         if (back.lengthSquared() < 1.0E-6D) {
             Direction facing = user.getHorizontalFacing();
-            back = new Vec3d(
-                    -facing.getOffsetX(),
-                    0.0D,
-                    -facing.getOffsetZ()
-            );
+            back = new Vec3d(-facing.getOffsetX(), 0.0D, -facing.getOffsetZ());
         }
 
         back = back.normalize();
-
-        return base.add(
-                back.x * UP_BACKOFF_DISTANCE,
-                0.0D,
-                back.z * UP_BACKOFF_DISTANCE
-        );
+        return base.add(back.x * UP_BACKOFF_DISTANCE, 0.0D, back.z * UP_BACKOFF_DISTANCE);
     }
 
     private static boolean isFenceLikeBlock(World world, BlockHitResult hit) {
@@ -300,10 +251,7 @@ public class EnderPearlProItem extends Item {
     }
 
     private static boolean isHorizontal(Direction side) {
-        return side == Direction.NORTH
-                || side == Direction.SOUTH
-                || side == Direction.EAST
-                || side == Direction.WEST;
+        return side == Direction.NORTH || side == Direction.SOUTH || side == Direction.EAST || side == Direction.WEST;
     }
 
     private static boolean canTeleportTo(World world, PlayerEntity user, Vec3d targetPos) {
