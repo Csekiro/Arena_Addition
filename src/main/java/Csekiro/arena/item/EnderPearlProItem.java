@@ -2,6 +2,7 @@ package Csekiro.arena.item;
 
 import eu.pb4.polymer.core.api.item.PolymerItem;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
 import net.minecraft.block.FenceBlock;
 import net.minecraft.block.WallBlock;
 import net.minecraft.component.DataComponentTypes;
@@ -27,6 +28,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.world.World;
 import xyz.nucleoid.packettweaker.PacketContext;
 
@@ -45,6 +47,12 @@ public class EnderPearlProItem extends Item implements PolymerItem {
     private static final int SIDE_DOWN_SEARCH_TIMES = 10;
 
     private static final double UP_BACKOFF_DISTANCE = 0.60D;
+
+    // 侧面候选点下方支撑检测深度
+    private static final int SIDE_SUPPORT_CHECK_DEPTH = 3;
+
+    // 若无支撑，则向点击的方块内部吃进去 0.1 格
+    private static final double SIDE_INSET_INTO_BLOCK = 0.01D;
 
     public EnderPearlProItem(Settings settings) {
         super(settings);
@@ -181,19 +189,22 @@ public class EnderPearlProItem extends Item implements PolymerItem {
     private static Vec3d trySidePreciseLogic(World world, PlayerEntity user, BlockHitResult hit) {
         Vec3d base = computeOriginalSidePrecisePos(user, hit);
 
-        if (canTeleportTo(world, user, base)) {
-            return base;
+        Vec3d resolved = resolveSideCandidate(world, user, hit, base);
+        if (resolved != null) {
+            return resolved;
         }
 
         Vec3d droppedBase = base.add(0.0D, -SIDE_INITIAL_DROP, 0.0D);
-        if (canTeleportTo(world, user, droppedBase)) {
-            return droppedBase;
+        resolved = resolveSideCandidate(world, user, hit, droppedBase);
+        if (resolved != null) {
+            return resolved;
         }
 
         for (int i = 1; i <= SIDE_DOWN_SEARCH_TIMES; i++) {
             Vec3d lowered = droppedBase.add(0.0D, -SIDE_DOWN_SEARCH_STEP * i, 0.0D);
-            if (canTeleportTo(world, user, lowered)) {
-                return lowered;
+            resolved = resolveSideCandidate(world, user, hit, lowered);
+            if (resolved != null) {
+                return resolved;
             }
         }
 
@@ -203,23 +214,46 @@ public class EnderPearlProItem extends Item implements PolymerItem {
     private static Vec3d trySideCenteredLogic(World world, PlayerEntity user, BlockHitResult hit) {
         Vec3d base = computeSideCenteredBasePos(hit);
 
-        if (canTeleportTo(world, user, base)) {
-            return base;
+        Vec3d resolved = resolveSideCandidate(world, user, hit, base);
+        if (resolved != null) {
+            return resolved;
         }
 
         Vec3d droppedBase = base.add(0.0D, -SIDE_INITIAL_DROP, 0.0D);
-        if (canTeleportTo(world, user, droppedBase)) {
-            return droppedBase;
+        resolved = resolveSideCandidate(world, user, hit, droppedBase);
+        if (resolved != null) {
+            return resolved;
         }
 
         for (int i = 1; i <= SIDE_DOWN_SEARCH_TIMES; i++) {
             Vec3d lowered = droppedBase.add(0.0D, -SIDE_DOWN_SEARCH_STEP * i, 0.0D);
-            if (canTeleportTo(world, user, lowered)) {
-                return lowered;
+            resolved = resolveSideCandidate(world, user, hit, lowered);
+            if (resolved != null) {
+                return resolved;
             }
         }
 
         return null;
+    }
+
+    /**
+     * 侧面候选点的统一处理逻辑：
+     * 1. 先要求当前位置本身是可传送的（不与碰撞箱重叠）
+     * 2. 若下方 5 格内有可站立方块，则保持原逻辑
+     * 3. 若下方 5 格内没有可站立方块，则改为向被点击方块内部吃进去 0.1 格
+     */
+    private static Vec3d resolveSideCandidate(World world, PlayerEntity user, BlockHitResult hit, Vec3d candidate) {
+        if (!canTeleportTo(world, user, candidate)) {
+            return null;
+        }
+
+        if (hasStandableBlockBelow(world, candidate, SIDE_SUPPORT_CHECK_DEPTH)) {
+            return candidate;
+        }
+
+        // 下方没有可站立支撑：改为略微卡进被点击的方块内
+        // 这里故意不再做 canTeleportTo 检查，否则会被碰撞检测否掉
+        return computeSideInsetIntoBlockPos(user, hit, candidate.y);
     }
 
     private static Vec3d computeTopCenterPos(BlockHitResult hit) {
@@ -249,6 +283,24 @@ public class EnderPearlProItem extends Item implements PolymerItem {
     private static Vec3d computeSideCenteredBasePos(BlockHitResult hit) {
         BlockPos targetBlock = hit.getBlockPos().offset(hit.getSide());
         return new Vec3d(targetBlock.getX() + 0.5D, targetBlock.getY(), targetBlock.getZ() + 0.5D);
+    }
+
+    /**
+     * 将玩家中心点向被点击方块内部收回 0.1 格，使包围盒略微卡进方块内获得“站立点”。
+     * 这里只改水平位置，Y 使用当前候选点的 Y，避免点击侧面上半部分时把人塞到奇怪高度。
+     */
+    private static Vec3d computeSideInsetIntoBlockPos(PlayerEntity user, BlockHitResult hit, double y) {
+        Vec3d hitPos = hit.getPos();
+        Direction side = hit.getSide();
+
+        double halfWidth = user.getWidth() / 2.0D;
+        double outward = Math.max(0.0D, halfWidth - SIDE_INSET_INTO_BLOCK);
+
+        return new Vec3d(
+                hitPos.x + side.getOffsetX() * outward,
+                y,
+                hitPos.z + side.getOffsetZ() * outward
+        );
     }
 
     private static Vec3d computeTopSurfaceBackoffPos(PlayerEntity user, BlockHitResult hit, Vec3d base) {
@@ -281,6 +333,32 @@ public class EnderPearlProItem extends Item implements PolymerItem {
                 targetPos.z - user.getZ()
         );
         return world.isSpaceEmpty(user, movedBox);
+    }
+
+    /**
+     * 检查目标位置下方 depth 格内，是否存在可作为站立支撑的方块。
+     */
+    private static boolean hasStandableBlockBelow(World world, Vec3d targetPos, int depth) {
+        BlockPos basePos = BlockPos.ofFloored(targetPos.x, targetPos.y, targetPos.z);
+
+        for (int i = 1; i <= depth; i++) {
+            BlockPos checkPos = basePos.down(i);
+            if (isStandableBlock(world, checkPos)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 这里只做“是否存在有效碰撞顶面”的宽松判定。
+     * 对你的这个玩法来说，比严格顶面判定更不容易把边缘情况全干碎。
+     */
+    private static boolean isStandableBlock(World world, BlockPos pos) {
+        BlockState state = world.getBlockState(pos);
+        VoxelShape shape = state.getCollisionShape(world, pos);
+        return !shape.isEmpty() && shape.getMax(Direction.Axis.Y) > 0.0D;
     }
 
     private static void playTeleportOriginEffects(ServerWorld world, PlayerEntity player, Vec3d originPos) {
