@@ -51,7 +51,7 @@ public class EnderPearlProItem extends Item implements PolymerItem {
     // 侧面候选点下方支撑检测深度
     private static final int SIDE_SUPPORT_CHECK_DEPTH = 3;
 
-    // 若无支撑，则向点击的方块内部吃进去 0.1 格
+    // 若无支撑，则向点击的方块内部吃进去 0.01 格
     private static final double SIDE_INSET_INTO_BLOCK = 0.01D;
 
     public EnderPearlProItem(Settings settings) {
@@ -105,9 +105,14 @@ public class EnderPearlProItem extends Item implements PolymerItem {
         // 冷却
         player.getItemCooldownManager().set(usedStack, COOLDOWN_TICKS);
 
+        // 传送前先清掉竖直动量和摔落累计，避免旧下落状态带进传送后
+        clearVerticalMotionAndFallDistance(player);
+
         // 传送
         player.requestTeleport(targetPos.x, targetPos.y, targetPos.z);
-        player.setVelocity(0.0D, 0.0D, 0.0D);
+
+        // 传送后再清一次，确保目标点落地前后都不会继承旧摔落/竖直速度
+        clearVerticalMotionAndFallDistance(player);
 
         // 目标位置：音效
         playTeleportDestinationSound(serverWorld, targetPos);
@@ -145,6 +150,20 @@ public class EnderPearlProItem extends Item implements PolymerItem {
         }
 
         if (side == Direction.DOWN) {
+            // 如果点击的是“单层方块”的下表面，则优先传送到该方块上方
+            if (isSingleBlockCeiling(world, hit.getBlockPos())) {
+                Vec3d topPos = computeTopCenterPos(hit);
+                if (canTeleportTo(world, user, topPos)) {
+                    return topPos;
+                }
+
+                Vec3d backed = computeTopSurfaceBackoffPos(user, hit, topPos);
+                if (canTeleportTo(world, user, backed)) {
+                    return backed;
+                }
+            }
+
+            // 原逻辑：传送到下方
             Vec3d base = computeBottomCenterPos(user, hit);
             if (canTeleportTo(world, user, base)) {
                 return base;
@@ -239,8 +258,8 @@ public class EnderPearlProItem extends Item implements PolymerItem {
     /**
      * 侧面候选点的统一处理逻辑：
      * 1. 先要求当前位置本身是可传送的（不与碰撞箱重叠）
-     * 2. 若下方 5 格内有可站立方块，则保持原逻辑
-     * 3. 若下方 5 格内没有可站立方块，则改为向被点击方块内部吃进去 0.1 格
+     * 2. 若下方 depth 格内有可站立方块，则保持原逻辑
+     * 3. 若下方 depth 格内没有可站立方块，则改为向被点击的方块内部吃进去一点点
      */
     private static Vec3d resolveSideCandidate(World world, PlayerEntity user, BlockHitResult hit, Vec3d candidate) {
         if (!canTeleportTo(world, user, candidate)) {
@@ -286,7 +305,7 @@ public class EnderPearlProItem extends Item implements PolymerItem {
     }
 
     /**
-     * 将玩家中心点向被点击方块内部收回 0.1 格，使包围盒略微卡进方块内获得“站立点”。
+     * 将玩家中心点向被点击方块内部收回一点点，使包围盒略微卡进方块内获得“站立点”。
      * 这里只改水平位置，Y 使用当前候选点的 Y，避免点击侧面上半部分时把人塞到奇怪高度。
      */
     private static Vec3d computeSideInsetIntoBlockPos(PlayerEntity user, BlockHitResult hit, double y) {
@@ -336,6 +355,23 @@ public class EnderPearlProItem extends Item implements PolymerItem {
     }
 
     /**
+     * 判断该方块是否可视为“只有一格厚”的单层顶板：
+     * 1. 自己有碰撞
+     * 2. 上面一格没有可碰撞实体（即不会继续往上堆成多层）
+     */
+    private static boolean isSingleBlockCeiling(World world, BlockPos pos) {
+        if (!isStandableBlock(world, pos)) {
+            return false;
+        }
+
+        BlockPos abovePos = pos.up();
+        BlockState aboveState = world.getBlockState(abovePos);
+        VoxelShape aboveShape = aboveState.getCollisionShape(world, abovePos);
+
+        return aboveShape.isEmpty();
+    }
+
+    /**
      * 检查目标位置下方 depth 格内，是否存在可作为站立支撑的方块。
      */
     private static boolean hasStandableBlockBelow(World world, Vec3d targetPos, int depth) {
@@ -353,12 +389,21 @@ public class EnderPearlProItem extends Item implements PolymerItem {
 
     /**
      * 这里只做“是否存在有效碰撞顶面”的宽松判定。
-     * 对你的这个玩法来说，比严格顶面判定更不容易把边缘情况全干碎。
      */
     private static boolean isStandableBlock(World world, BlockPos pos) {
         BlockState state = world.getBlockState(pos);
         VoxelShape shape = state.getCollisionShape(world, pos);
         return !shape.isEmpty() && shape.getMax(Direction.Axis.Y) > 0.0D;
+    }
+
+    /**
+     * 清除竖直动量，并重置摔落累计，避免传送后吃到摔落伤害。
+     * 这里只清 Y 速度，保留水平速度。
+     */
+    private static void clearVerticalMotionAndFallDistance(PlayerEntity player) {
+        Vec3d velocity = player.getVelocity();
+        player.setVelocity(velocity.x, 0.0D, velocity.z);
+        player.fallDistance = 0.0F;
     }
 
     private static void playTeleportOriginEffects(ServerWorld world, PlayerEntity player, Vec3d originPos) {
