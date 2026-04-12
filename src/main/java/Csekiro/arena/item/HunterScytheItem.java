@@ -7,6 +7,7 @@ import net.minecraft.item.Items;
 import xyz.nucleoid.packettweaker.PacketContext;
 
 public class HunterScytheItem extends Item implements PolymerItem {
+    private static final boolean LAST_STAND_ENABLED = true;
     private static final boolean RECOVERY_REQUIRES_MAIN_HAND = true;
     private static final boolean NON_MELEE_CAN_TRIGGER_RECOVERY = false;
 
@@ -18,6 +19,10 @@ public class HunterScytheItem extends Item implements PolymerItem {
 
     public HunterScytheItem(Settings settings) {
         super(settings);
+    }
+
+    public static boolean isLastStandEnabled() {
+        return LAST_STAND_ENABLED;
     }
 
     public static boolean isRecoveryRequiresMainHand() {

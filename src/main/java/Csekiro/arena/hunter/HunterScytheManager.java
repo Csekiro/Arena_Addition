@@ -49,7 +49,7 @@ public final class HunterScytheManager {
             }
 
             PlayerBlackHeartState state = STATES.get(player.getUuid());
-            if (state == null || !state.lastStand || state.forcingDeath) {
+            if (!HunterScytheItem.isLastStandEnabled() || state == null || !state.lastStand || state.forcingDeath) {
                 return true;
             }
 
@@ -63,7 +63,7 @@ public final class HunterScytheManager {
             }
 
             PlayerBlackHeartState state = STATES.get(player.getUuid());
-            if (state == null || state.forcingDeath || !state.hasActiveBlackHearts()) {
+            if (!HunterScytheItem.isLastStandEnabled() || state == null || state.forcingDeath || !state.hasActiveBlackHearts()) {
                 return true;
             }
 
@@ -143,8 +143,7 @@ public final class HunterScytheManager {
         }
 
         player.heal(recovered);
-        /*测试用
-        player.sendMessage(
+        /*娴嬭瘯鐢?        player.sendMessage(
                 Text.literal("Recovered black hearts +" + formatRecoveryAmount(recovered))
                         .formatted(Formatting.DARK_GRAY, Formatting.ITALIC),
                 false

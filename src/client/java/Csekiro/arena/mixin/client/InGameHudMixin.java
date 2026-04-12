@@ -13,9 +13,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-
 @Mixin(InGameHud.class)
 public abstract class InGameHudMixin {
     @Unique
@@ -27,13 +24,17 @@ public abstract class InGameHudMixin {
     @Unique
     private static final Identifier ARENA_CRITICAL_HEART_HARDCORE_BLINKING = Identifier.of("arena", "hud/heart/critical_hardcore_blinking");
     @Unique
-    private static final Class<?> ARENA_HEART_TYPE_CLASS = resolveHeartTypeClass();
+    private static final Identifier VANILLA_CONTAINER_HEART = Identifier.ofVanilla("hud/heart/container");
     @Unique
-    private static final Object ARENA_CONTAINER_HEART = resolveHeartType("CONTAINER");
+    private static final Identifier VANILLA_CONTAINER_HEART_HARDCORE = Identifier.ofVanilla("hud/heart/container_hardcore");
     @Unique
-    private static final Object ARENA_WITHERED_HEART = resolveHeartType("WITHERED");
+    private static final Identifier VANILLA_WITHERED_HEART_FULL = Identifier.ofVanilla("hud/heart/withered_full");
     @Unique
-    private static final Method ARENA_DRAW_HEART = resolveDrawHeartMethod();
+    private static final Identifier VANILLA_WITHERED_HEART_HALF = Identifier.ofVanilla("hud/heart/withered_half");
+    @Unique
+    private static final Identifier VANILLA_WITHERED_HEART_HARDCORE_FULL = Identifier.ofVanilla("hud/heart/withered_hardcore_full");
+    @Unique
+    private static final Identifier VANILLA_WITHERED_HEART_HARDCORE_HALF = Identifier.ofVanilla("hud/heart/withered_hardcore_half");
 
     @Inject(method = "renderHealthBar", at = @At("TAIL"))
     private void arena$renderBlackHearts(
@@ -88,7 +89,14 @@ public abstract class InGameHudMixin {
             }
 
             if (heartIndex >= baseHearts) {
-                drawHeart(context, ARENA_CONTAINER_HEART, heartX, heartY, hardcore, false, false);
+                context.drawGuiTexture(
+                        RenderPipelines.GUI_TEXTURED,
+                        getContainerHeartTexture(hardcore),
+                        heartX,
+                        heartY,
+                        9,
+                        9
+                );
             }
 
             if (hasCriticalMixedHeart && heartIndex == mixedHeartIndex) {
@@ -113,8 +121,29 @@ public abstract class InGameHudMixin {
                 continue;
             }
 
-            drawHeart(context, ARENA_WITHERED_HEART, heartX, heartY, hardcore, false, slotBlackUnits == 1);
+            context.drawGuiTexture(
+                    RenderPipelines.GUI_TEXTURED,
+                    getWitheredHeartTexture(hardcore, slotBlackUnits == 1),
+                    heartX,
+                    heartY,
+                    9,
+                    9
+            );
         }
+    }
+
+    @Unique
+    private static Identifier getContainerHeartTexture(boolean hardcore) {
+        return hardcore ? VANILLA_CONTAINER_HEART_HARDCORE : VANILLA_CONTAINER_HEART;
+    }
+
+    @Unique
+    private static Identifier getWitheredHeartTexture(boolean hardcore, boolean half) {
+        if (hardcore) {
+            return half ? VANILLA_WITHERED_HEART_HARDCORE_HALF : VANILLA_WITHERED_HEART_HARDCORE_FULL;
+        }
+
+        return half ? VANILLA_WITHERED_HEART_HALF : VANILLA_WITHERED_HEART_FULL;
     }
 
     @Unique
@@ -124,57 +153,5 @@ public abstract class InGameHudMixin {
         }
 
         return blinking ? ARENA_CRITICAL_HEART_BLINKING : ARENA_CRITICAL_HEART;
-    }
-
-    @Unique
-    private static Class<?> resolveHeartTypeClass() {
-        try {
-            return Class.forName("net.minecraft.client.gui.hud.InGameHud$HeartType");
-        } catch (ClassNotFoundException exception) {
-            throw new IllegalStateException("Failed to resolve heart type", exception);
-        }
-    }
-
-    @Unique
-    private static Object resolveHeartType(String name) {
-        Object[] constants = ARENA_HEART_TYPE_CLASS.getEnumConstants();
-
-        for (Object constant : constants) {
-            Enum<?> enumValue = (Enum<?>) constant;
-            if (enumValue.name().equals(name)) {
-                return constant;
-            }
-        }
-
-        throw new IllegalStateException("Missing heart type " + name);
-    }
-
-    @Unique
-    private static Method resolveDrawHeartMethod() {
-        try {
-            Method method = InGameHud.class.getDeclaredMethod(
-                    "drawHeart",
-                    DrawContext.class,
-                    ARENA_HEART_TYPE_CLASS,
-                    int.class,
-                    int.class,
-                    boolean.class,
-                    boolean.class,
-                    boolean.class
-            );
-            method.setAccessible(true);
-            return method;
-        } catch (NoSuchMethodException exception) {
-            throw new IllegalStateException("Failed to resolve drawHeart", exception);
-        }
-    }
-
-    @Unique
-    private void drawHeart(DrawContext context, Object heartType, int x, int y, boolean hardcore, boolean blinking, boolean half) {
-        try {
-            ARENA_DRAW_HEART.invoke(this, context, heartType, x, y, hardcore, blinking, half);
-        } catch (IllegalAccessException | InvocationTargetException exception) {
-            throw new RuntimeException("Failed to draw hunter scythe black heart", exception);
-        }
     }
 }
