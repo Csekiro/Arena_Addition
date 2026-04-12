@@ -53,7 +53,7 @@ public final class HunterScytheManager {
                 return true;
             }
 
-            triggerWitherDeath(player, state);
+            triggerDeath(player, state, source);
             return false;
         });
 
@@ -113,7 +113,7 @@ public final class HunterScytheManager {
         syncDisplay(player, state);
     }
 
-    public static void handleSuccessfulAttack(Entity target, DamageSource source, float damageAmount) {
+    public static void handleSuccessfulAttack(Entity target, DamageSource source, float attemptedDamage, float blockedDamage) {
         Entity attacker = source.getAttacker();
         if (!(attacker instanceof ServerPlayerEntity player) || target == player) {
             return;
@@ -132,7 +132,7 @@ public final class HunterScytheManager {
             return;
         }
 
-        float recoveryAmount = computeRecoveryAmount(damageAmount);
+        float recoveryAmount = computeRecoveryAmount(attemptedDamage, blockedDamage);
         if (recoveryAmount <= 0.0F) {
             return;
         }
@@ -143,7 +143,7 @@ public final class HunterScytheManager {
         }
 
         player.heal(recovered);
-        /*娴嬭瘯鐢?        player.sendMessage(
+        /*player.sendMessage(
                 Text.literal("Recovered black hearts +" + formatRecoveryAmount(recovered))
                         .formatted(Formatting.DARK_GRAY, Formatting.ITALIC),
                 false
@@ -206,6 +206,10 @@ public final class HunterScytheManager {
     }
 
     private static void triggerWitherDeath(ServerPlayerEntity player, PlayerBlackHeartState state) {
+        triggerDeath(player, state, player.getDamageSources().wither());
+    }
+
+    private static void triggerDeath(ServerPlayerEntity player, PlayerBlackHeartState state, DamageSource source) {
         if (state.forcingDeath) {
             return;
         }
@@ -216,15 +220,18 @@ public final class HunterScytheManager {
         syncDisplay(player, state);
 
         try {
-            player.damage((ServerWorld) player.getEntityWorld(), player.getDamageSources().wither(), Float.MAX_VALUE);
+            player.damage((ServerWorld) player.getEntityWorld(), source, Float.MAX_VALUE);
         } finally {
             state.forcingDeath = false;
         }
     }
 
-    private static float computeRecoveryAmount(float damageAmount) {
+    private static float computeRecoveryAmount(float attemptedDamage, float blockedDamage) {
+        float effectiveBlockedDamage = Math.max(0.0F, blockedDamage);
+        float effectiveDamageAmount = Math.max(0.0F, attemptedDamage - effectiveBlockedDamage);
         float recoveryAmount = HunterScytheItem.getBlackHeartRecoveryBase()
-                + Math.max(0.0F, damageAmount) * HunterScytheItem.getBlackHeartRecoveryDamageMultiplier();
+                + effectiveDamageAmount * HunterScytheItem.getBlackHeartRecoveryDamageMultiplier()
+                + effectiveBlockedDamage * HunterScytheItem.getBlackHeartRecoveryShieldBlockedDamageMultiplier();
         return MathHelper.clamp(recoveryAmount, 0.0F, HunterScytheItem.getBlackHeartRecoveryCap());
     }
 
