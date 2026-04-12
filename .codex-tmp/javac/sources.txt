@@ -1,0 +1,12 @@
+D:\mod_make\Arena_addition\src\main\java\Csekiro\arena\Arena.java
+D:\mod_make\Arena_addition\src\main\java\Csekiro\arena\advancement\ArenaCriteria.java
+D:\mod_make\Arena_addition\src\main\java\Csekiro\arena\advancement\UsedCriterion.java
+D:\mod_make\Arena_addition\src\main\java\Csekiro\arena\hunter\HunterScytheManager.java
+D:\mod_make\Arena_addition\src\main\java\Csekiro\arena\hunter\HunterScytheTrackedPlayer.java
+D:\mod_make\Arena_addition\src\main\java\Csekiro\arena\item\EnderPearlProItem.java
+D:\mod_make\Arena_addition\src\main\java\Csekiro\arena\item\HunterScytheItem.java
+D:\mod_make\Arena_addition\src\main\java\Csekiro\arena\item\ModItems.java
+D:\mod_make\Arena_addition\src\main\java\Csekiro\arena\mixin\LivingEntityMixin.java
+D:\mod_make\Arena_addition\src\main\java\Csekiro\arena\mixin\PlayerEntityMixin.java
+D:\mod_make\Arena_addition\src\client\java\Csekiro\arena\client\ArenaDataGenerator.java
+D:\mod_make\Arena_addition\src\client\java\Csekiro\arena\mixin\client\InGameHudMixin.java

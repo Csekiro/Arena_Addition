@@ -1,7 +1,8 @@
 {
-  "item.arena.ender_pearl_pro": "高级末影珍珠",
+  "item.arena.ender_pearl_pro": "\u9ad8\u7ea7\u672b\u5f71\u73cd\u73e0",
+  "item.arena.hunter_scythe": "\u730e\u4eba\u9570\u5200",
   "advancement.arena.root.title": "Arena",
-  "advancement.arena.root.description": "Arena 模组进度",
-  "advancement.arena.used.title": "熟练传送",
-  "advancement.arena.used.description": "成功使用一次高级末影珍珠"
+  "advancement.arena.root.description": "Arena \u6a21\u7ec4\u8fdb\u5ea6",
+  "advancement.arena.used.title": "\u719f\u7ec3\u4f20\u9001",
+  "advancement.arena.used.description": "\u6210\u529f\u4f7f\u7528\u4e00\u6b21\u9ad8\u7ea7\u672b\u5f71\u73cd\u73e0"
 }

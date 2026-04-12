@@ -1,5 +1,6 @@
 package Csekiro.arena;
 
+import Csekiro.arena.hunter.HunterScytheManager;
 import Csekiro.arena.item.ModItems;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
@@ -13,6 +14,7 @@ public class Arena implements ModInitializer {
     public void onInitialize() {
         LOGGER.info("[Arena] onInitialize start");
         ModItems.initialize();
+        HunterScytheManager.initialize();
         LOGGER.info("[Arena] onInitialize done");
     }
 }
