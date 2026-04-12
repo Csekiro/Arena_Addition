@@ -14,23 +14,16 @@ public class HunterScytheItem extends Item implements PolymerItem {
     public static final float DEFAULT_ATTACK_DAMAGE = 7.0F;
     public static final float DEFAULT_ATTACK_SPEED = 0.8F;
 
-    //红心耗尽但有黑心是否锁血
     private static final boolean LAST_STAND_ENABLED = true;
-    //是否主手持才触发回血
     private static final boolean RECOVERY_REQUIRES_MAIN_HAND = true;
-    //非近战攻击触发回血
     private static final boolean NON_MELEE_CAN_TRIGGER_RECOVERY = false;
+    private static final boolean FULL_RECOVERY_ON_KILL_ENABLED = true;
+    private static final boolean FULL_RECOVERY_ON_NON_PLAYER_KILL_ENABLED = false;
 
-    //回血基�?
     private static final float BLACK_HEART_RECOVERY_BASE = 2.0F;
-    //回血倍率
     private static final float BLACK_HEART_RECOVERY_DAMAGE_MULTIPLIER = 0.5F;
-    //盾牌挡下攻击,回血倍率
     private static final float BLACK_HEART_RECOVERY_SHIELD_BLOCKED_DAMAGE_MULTIPLIER = 0.5F;
-
-    //回血上限
     private static final float BLACK_HEART_RECOVERY_CAP = 6.0F;
-    //黑心存续时间
     private static final int BLACK_HEART_DURATION_TICKS = 100;
 
     public HunterScytheItem(Settings settings) {
@@ -43,7 +36,7 @@ public class HunterScytheItem extends Item implements PolymerItem {
                         EntityAttributes.ATTACK_DAMAGE,
                         new EntityAttributeModifier(
                                 Item.BASE_ATTACK_DAMAGE_MODIFIER_ID,
-                                DEFAULT_ATTACK_DAMAGE - 6.0,
+                                DEFAULT_ATTACK_DAMAGE - 6.0F,
                                 EntityAttributeModifier.Operation.ADD_VALUE
                         ),
                         AttributeModifierSlot.MAINHAND
@@ -52,7 +45,7 @@ public class HunterScytheItem extends Item implements PolymerItem {
                         EntityAttributes.ATTACK_SPEED,
                         new EntityAttributeModifier(
                                 Item.BASE_ATTACK_SPEED_MODIFIER_ID,
-                                DEFAULT_ATTACK_SPEED - 4.0,
+                                DEFAULT_ATTACK_SPEED - 4.0F,
                                 EntityAttributeModifier.Operation.ADD_VALUE
                         ),
                         AttributeModifierSlot.MAINHAND
@@ -70,6 +63,14 @@ public class HunterScytheItem extends Item implements PolymerItem {
 
     public static boolean isNonMeleeRecoveryEnabled() {
         return NON_MELEE_CAN_TRIGGER_RECOVERY;
+    }
+
+    public static boolean isFullRecoveryOnKillEnabled() {
+        return FULL_RECOVERY_ON_KILL_ENABLED;
+    }
+
+    public static boolean isFullRecoveryOnNonPlayerKillEnabled() {
+        return FULL_RECOVERY_ON_NON_PLAYER_KILL_ENABLED;
     }
 
     public static float getBlackHeartRecoveryBase() {

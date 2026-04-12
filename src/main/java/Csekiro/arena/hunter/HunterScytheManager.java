@@ -78,6 +78,8 @@ public final class HunterScytheManager {
         });
 
         ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
+            handleKillRecovery(entity, source);
+
             if (entity instanceof ServerPlayerEntity player) {
                 clear(player);
             }
@@ -153,6 +155,42 @@ public final class HunterScytheManager {
         clampBlackHeartsToMaxTotal(player, state);
         player.markHealthDirty();
         syncDisplay(player, state);
+    }
+
+    private static void handleKillRecovery(Entity victim, DamageSource source) {
+        if (!HunterScytheItem.isFullRecoveryOnKillEnabled()) {
+            return;
+        }
+
+        Entity attacker = source.getAttacker();
+        if (!(attacker instanceof ServerPlayerEntity player) || victim == player) {
+            return;
+        }
+
+        if (!(victim instanceof ServerPlayerEntity) && !HunterScytheItem.isFullRecoveryOnNonPlayerKillEnabled()) {
+            return;
+        }
+
+        if (!isHunterScytheKill(player, source)) {
+            return;
+        }
+
+        PlayerBlackHeartState state = STATES.get(player.getUuid());
+        if (state == null || !state.hasActiveBlackHearts()) {
+            return;
+        }
+
+        float recovered = consumeRecoverableBlackHearts(state, state.getTotalBlackHearts());
+        if (recovered <= 0.0F) {
+            return;
+        }
+
+        player.heal(recovered);
+        state.lastStand = false;
+        state.batches.clear();
+        STATES.remove(player.getUuid());
+        player.markHealthDirty();
+        syncDisplay(player, new PlayerBlackHeartState());
     }
 
     public static boolean shouldBlockNaturalRegen(PlayerEntity player) {
@@ -237,6 +275,10 @@ public final class HunterScytheManager {
 
     private static boolean isDirectMeleeAttack(ServerPlayerEntity player, DamageSource source) {
         return source.getSource() == player;
+    }
+
+    private static boolean isHunterScytheKill(ServerPlayerEntity player, DamageSource source) {
+        return player.getMainHandStack().isOf(ModItems.HUNTER_SCYTHE) && source.getSource() == player;
     }
 
     private static String formatRecoveryAmount(float amount) {
