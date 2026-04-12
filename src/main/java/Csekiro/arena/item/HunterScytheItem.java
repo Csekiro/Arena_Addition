@@ -11,9 +11,6 @@ import net.minecraft.item.Items;
 import xyz.nucleoid.packettweaker.PacketContext;
 
 public class HunterScytheItem extends Item implements PolymerItem {
-    public static final float DEFAULT_ATTACK_DAMAGE = 7.0F;
-    public static final float DEFAULT_ATTACK_SPEED = 0.8F;
-
     private static final boolean LAST_STAND_ENABLED = true;
     private static final boolean RECOVERY_REQUIRES_MAIN_HAND = true;
     private static final boolean NON_MELEE_CAN_TRIGGER_RECOVERY = false;
@@ -30,28 +27,6 @@ public class HunterScytheItem extends Item implements PolymerItem {
         super(settings);
     }
 
-    public static AttributeModifiersComponent createAttributeModifiers() {
-        return AttributeModifiersComponent.builder()
-                .add(
-                        EntityAttributes.ATTACK_DAMAGE,
-                        new EntityAttributeModifier(
-                                Item.BASE_ATTACK_DAMAGE_MODIFIER_ID,
-                                DEFAULT_ATTACK_DAMAGE - 6.0F,
-                                EntityAttributeModifier.Operation.ADD_VALUE
-                        ),
-                        AttributeModifierSlot.MAINHAND
-                )
-                .add(
-                        EntityAttributes.ATTACK_SPEED,
-                        new EntityAttributeModifier(
-                                Item.BASE_ATTACK_SPEED_MODIFIER_ID,
-                                DEFAULT_ATTACK_SPEED - 4.0F,
-                                EntityAttributeModifier.Operation.ADD_VALUE
-                        ),
-                        AttributeModifierSlot.MAINHAND
-                )
-                .build();
-    }
 
     public static boolean isLastStandEnabled() {
         return LAST_STAND_ENABLED;

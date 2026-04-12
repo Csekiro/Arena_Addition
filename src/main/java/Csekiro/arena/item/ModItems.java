@@ -4,6 +4,7 @@ import Csekiro.arena.Arena;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
+import net.minecraft.item.ToolMaterial;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.util.Identifier;
@@ -27,7 +28,6 @@ public final class ModItems {
             HunterScytheItem::new,
             new Item.Settings()
                     .maxCount(1)
-                    .attributeModifiers(HunterScytheItem.createAttributeModifiers())
     );
 
     private static Item register(String path, Function<Item.Settings, Item> factory, Item.Settings settings) {
