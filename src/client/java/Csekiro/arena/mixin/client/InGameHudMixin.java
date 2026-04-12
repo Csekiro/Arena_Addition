@@ -61,23 +61,23 @@ public abstract class InGameHudMixin {
 
         boolean hardcore = player.getEntityWorld().getLevelProperties().isHardcore();
         int baseHearts = MathHelper.ceil(maxHealth / 2.0F);
-        int displayedCurrentHealth = trackedPlayer.arena$isBlackHeartLastStand() ? 0 : currentHealth;
-        int blackUnits = MathHelper.ceil(blackHeartAmount);
-        boolean hasCriticalMixedHeart = displayedCurrentHealth > 0 && (displayedCurrentHealth & 1) == 1 && blackUnits > 0;
-        int criticalMixedHeartIndex = displayedCurrentHealth / 2;
+        int maxDisplayUnits = MathHelper.ceil(maxHealth);
+        int displayedCurrentHealth = trackedPlayer.arena$isBlackHeartLastStand() ? 0 : MathHelper.ceil(player.getHealth());
+        int blackUnits = Math.min(MathHelper.ceil(blackHeartAmount), Math.max(0, maxDisplayUnits - displayedCurrentHealth));
+        int fullRedHearts = displayedCurrentHealth / 2;
+        boolean hasRedHalfHeart = (displayedCurrentHealth & 1) == 1;
+        boolean hasCriticalMixedHeart = hasRedHalfHeart && blackUnits > 0;
+        int mixedHeartIndex = fullRedHearts;
+        int occupiedRedSlots = fullRedHearts + (hasRedHalfHeart ? 1 : 0);
         int remainingBlackUnits = hasCriticalMixedHeart ? blackUnits - 1 : blackUnits;
-        int blackDisplayStartUnit = displayedCurrentHealth + (hasCriticalMixedHeart ? 1 : 0);
-        int occupiedHeartSlots = displayedCurrentHealth / 2
-                + (hasCriticalMixedHeart ? 1 : displayedCurrentHealth % 2)
-                + MathHelper.ceil(remainingBlackUnits / 2.0F);
-        int totalDisplayHearts = Math.max(baseHearts, occupiedHeartSlots);
+        int blackStartHeartIndex = occupiedRedSlots;
+        int totalDisplayHearts = Math.max(baseHearts, occupiedRedSlots + MathHelper.ceil(remainingBlackUnits / 2.0F));
 
         for (int heartIndex = totalDisplayHearts - 1; heartIndex >= 0; heartIndex--) {
             int row = heartIndex / 10;
             int column = heartIndex % 10;
             int heartX = x + column * 8;
             int heartY = y - row * rowHeight;
-            int unitIndex = heartIndex * 2;
 
             if (displayedCurrentHealth + absorption <= 4) {
                 heartY += player.getRandom().nextInt(2);
@@ -91,7 +91,7 @@ public abstract class InGameHudMixin {
                 drawHeart(context, ARENA_CONTAINER_HEART, heartX, heartY, hardcore, false, false);
             }
 
-            if (hasCriticalMixedHeart && heartIndex == criticalMixedHeartIndex) {
+            if (hasCriticalMixedHeart && heartIndex == mixedHeartIndex) {
                 context.drawGuiTexture(
                         RenderPipelines.GUI_TEXTURED,
                         getCriticalHeartTexture(hardcore, blinking),
@@ -103,12 +103,17 @@ public abstract class InGameHudMixin {
                 continue;
             }
 
-            if (remainingBlackUnits <= 0 || unitIndex < blackDisplayStartUnit || unitIndex >= blackDisplayStartUnit + remainingBlackUnits) {
+            int slotOffset = heartIndex - blackStartHeartIndex;
+            if (remainingBlackUnits <= 0 || slotOffset < 0) {
                 continue;
             }
 
-            boolean half = unitIndex + 1 == blackDisplayStartUnit + remainingBlackUnits;
-            drawHeart(context, ARENA_WITHERED_HEART, heartX, heartY, hardcore, false, half);
+            int slotBlackUnits = MathHelper.clamp(remainingBlackUnits - slotOffset * 2, 0, 2);
+            if (slotBlackUnits <= 0) {
+                continue;
+            }
+
+            drawHeart(context, ARENA_WITHERED_HEART, heartX, heartY, hardcore, false, slotBlackUnits == 1);
         }
     }
 

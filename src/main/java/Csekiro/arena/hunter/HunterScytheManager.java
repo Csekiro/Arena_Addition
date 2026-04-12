@@ -12,6 +12,8 @@ import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.collection.DefaultedList;
 import net.minecraft.util.math.MathHelper;
 
@@ -20,6 +22,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -140,6 +143,13 @@ public final class HunterScytheManager {
         }
 
         player.heal(recovered);
+        /*测试用
+        player.sendMessage(
+                Text.literal("Recovered black hearts +" + formatRecoveryAmount(recovered))
+                        .formatted(Formatting.DARK_GRAY, Formatting.ITALIC),
+                false
+        );*/
+
         state.lastStand = player.getHealth() <= LAST_STAND_HEALTH && state.hasActiveBlackHearts();
         clampBlackHeartsToMaxTotal(player, state);
         player.markHealthDirty();
@@ -221,6 +231,14 @@ public final class HunterScytheManager {
 
     private static boolean isDirectMeleeAttack(ServerPlayerEntity player, DamageSource source) {
         return source.getSource() == player;
+    }
+
+    private static String formatRecoveryAmount(float amount) {
+        if (Math.abs(amount - Math.round(amount)) < 0.001F) {
+            return Integer.toString(Math.round(amount));
+        }
+
+        return String.format(Locale.ROOT, "%.1f", amount);
     }
 
     private static float consumeRecoverableBlackHearts(PlayerBlackHeartState state, float amount) {

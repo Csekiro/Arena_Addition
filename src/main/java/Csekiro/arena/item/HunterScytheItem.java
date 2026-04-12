@@ -7,11 +7,13 @@ import net.minecraft.item.Items;
 import xyz.nucleoid.packettweaker.PacketContext;
 
 public class HunterScytheItem extends Item implements PolymerItem {
-    private static final boolean RECOVERY_REQUIRES_MAIN_HAND = false;
-    private static final boolean NON_MELEE_CAN_TRIGGER_RECOVERY = true;
-    private static final float BLACK_HEART_RECOVERY_BASE = 6.0F;
-    private static final float BLACK_HEART_RECOVERY_DAMAGE_MULTIPLIER = 0.0F;
+    private static final boolean RECOVERY_REQUIRES_MAIN_HAND = true;
+    private static final boolean NON_MELEE_CAN_TRIGGER_RECOVERY = false;
+
+    private static final float BLACK_HEART_RECOVERY_BASE = 2.0F;
+    private static final float BLACK_HEART_RECOVERY_DAMAGE_MULTIPLIER = 0.5F;
     private static final float BLACK_HEART_RECOVERY_CAP = 6.0F;
+
     private static final int BLACK_HEART_DURATION_TICKS = 100;
 
     public HunterScytheItem(Settings settings) {
