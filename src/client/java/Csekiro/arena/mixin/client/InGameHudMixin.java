@@ -28,13 +28,13 @@ public abstract class InGameHudMixin {
     @Unique
     private static final Identifier VANILLA_CONTAINER_HEART_HARDCORE = Identifier.ofVanilla("hud/heart/container_hardcore");
     @Unique
-    private static final Identifier VANILLA_WITHERED_HEART_FULL = Identifier.ofVanilla("hud/heart/withered_full");
+    private static final Identifier ARENA_GRAY_HEART_FULL = Identifier.of("arena", "hud/heart/gray_full");
     @Unique
-    private static final Identifier VANILLA_WITHERED_HEART_HALF = Identifier.ofVanilla("hud/heart/withered_half");
+    private static final Identifier ARENA_GRAY_HEART_HALF = Identifier.of("arena", "hud/heart/gray_half");
     @Unique
-    private static final Identifier VANILLA_WITHERED_HEART_HARDCORE_FULL = Identifier.ofVanilla("hud/heart/withered_hardcore_full");
+    private static final Identifier ARENA_GRAY_HEART_HARDCORE_FULL = Identifier.of("arena", "hud/heart/gray_hardcore_full");
     @Unique
-    private static final Identifier VANILLA_WITHERED_HEART_HARDCORE_HALF = Identifier.ofVanilla("hud/heart/withered_hardcore_half");
+    private static final Identifier ARENA_GRAY_HEART_HARDCORE_HALF = Identifier.of("arena", "hud/heart/gray_hardcore_half");
 
     @Inject(method = "renderHealthBar", at = @At("TAIL"))
     private void arena$renderBlackHearts(
@@ -123,7 +123,7 @@ public abstract class InGameHudMixin {
 
             context.drawGuiTexture(
                     RenderPipelines.GUI_TEXTURED,
-                    getWitheredHeartTexture(hardcore, slotBlackUnits == 1),
+                    getGrayHeartTexture(hardcore, slotBlackUnits == 1),
                     heartX,
                     heartY,
                     9,
@@ -138,12 +138,12 @@ public abstract class InGameHudMixin {
     }
 
     @Unique
-    private static Identifier getWitheredHeartTexture(boolean hardcore, boolean half) {
+    private static Identifier getGrayHeartTexture(boolean hardcore, boolean half) {
         if (hardcore) {
-            return half ? VANILLA_WITHERED_HEART_HARDCORE_HALF : VANILLA_WITHERED_HEART_HARDCORE_FULL;
+            return half ? ARENA_GRAY_HEART_HARDCORE_HALF : ARENA_GRAY_HEART_HARDCORE_FULL;
         }
 
-        return half ? VANILLA_WITHERED_HEART_HALF : VANILLA_WITHERED_HEART_FULL;
+        return half ? ARENA_GRAY_HEART_HALF : ARENA_GRAY_HEART_FULL;
     }
 
     @Unique

@@ -25,7 +25,9 @@ public final class ModItems {
     public static final Item HUNTER_SCYTHE = register(
             "hunter_scythe",
             HunterScytheItem::new,
-            new Item.Settings().maxCount(1)
+            new Item.Settings()
+                    .maxCount(1)
+                    .attributeModifiers(HunterScytheItem.createAttributeModifiers())
     );
 
     private static Item register(String path, Function<Item.Settings, Item> factory, Item.Settings settings) {

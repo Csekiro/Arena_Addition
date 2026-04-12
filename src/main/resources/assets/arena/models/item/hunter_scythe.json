@@ -1,6 +1,42 @@
 {
-  "parent": "item/handheld",
+  "parent": "item/generated",
   "textures": {
     "layer0": "arena:item/hunter_scythe"
+  },
+  "display": {
+    "thirdperson_righthand": {
+      "rotation": [0, -90, 42],
+      "translation": [0, 8.25, 2.25],
+      "scale": [2.2, 2.2, 0.85]
+    },
+    "thirdperson_lefthand": {
+      "rotation": [0, 90, -42],
+      "translation": [0, 8.25, 2.25],
+      "scale": [2.2, 2.2, 0.85]
+    },
+    "firstperson_righthand": {
+      "rotation": [0, -90, 52],
+      "translation": [2.38, 6.05, 0.38],
+      "scale": [1.5, 1.5, 0.68]
+    },
+    "firstperson_lefthand": {
+      "rotation": [180, 95, 129],
+      "translation": [3.5, 5.75, 0],
+      "scale": [1.5, 1.5, 0.68]
+    },
+    "gui": {
+      "translation": [1, 0.25, 0],
+      "scale": [1.2, 1.2, 0.68]
+    },
+    "head": {
+      "rotation": [0, 0, 121],
+      "translation": [5, 13.75, -2],
+      "scale": [2, 2, 1]
+    },
+    "fixed": {
+      "rotation": [180, 0, 180],
+      "translation": [-1.25, 0.25, 0],
+      "scale": [1.4, 1.4, 0.58]
+    }
   }
 }
