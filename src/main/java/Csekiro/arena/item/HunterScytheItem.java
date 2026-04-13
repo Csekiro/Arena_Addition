@@ -12,6 +12,7 @@ import xyz.nucleoid.packettweaker.PacketContext;
 
 public class HunterScytheItem extends Item implements PolymerItem {
     private static final boolean LAST_STAND_ENABLED = true;
+    private static final boolean HUNTING_MOMENT_ENABLED = false;
     private static final boolean RECOVERY_REQUIRES_MAIN_HAND = true;
     private static final boolean NON_MELEE_CAN_TRIGGER_RECOVERY = false;
     private static final boolean FULL_RECOVERY_ON_KILL_ENABLED = true;
@@ -30,6 +31,10 @@ public class HunterScytheItem extends Item implements PolymerItem {
 
     public static boolean isLastStandEnabled() {
         return LAST_STAND_ENABLED;
+    }
+
+    public static boolean isHuntingMomentEnabled() {
+        return HUNTING_MOMENT_ENABLED;
     }
 
     public static boolean isRecoveryRequiresMainHand() {

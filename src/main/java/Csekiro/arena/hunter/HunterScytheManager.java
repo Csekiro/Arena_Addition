@@ -71,7 +71,13 @@ public final class HunterScytheManager {
             player.setHealth(LAST_STAND_HEALTH);
             player.hurtTime = 0;
             player.maxHurtTime = 0;
-            clampBlackHeartsToMaxTotal(player, state);
+            if (!HunterScytheItem.isHuntingMomentEnabled() && state.pendingLastStandReplacement) {
+                replaceBlackHearts(player, state, state.pendingLastStandHealth);
+            } else {
+                clampBlackHeartsToMaxTotal(player, state);
+            }
+            state.pendingLastStandReplacement = false;
+            state.pendingLastStandHealth = 0.0F;
             player.markHealthDirty();
             syncDisplay(player, state);
             return false;
@@ -94,24 +100,44 @@ public final class HunterScytheManager {
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> clear(handler.player));
     }
 
-    public static void recordAppliedDamage(ServerPlayerEntity player, float appliedDamage, float absorbedDamage) {
+    public static void recordAppliedDamage(ServerPlayerEntity player, float appliedDamage, float absorbedDamage, float preDamageHealth) {
         if (appliedDamage <= 0.0F) {
             return;
         }
 
         PlayerBlackHeartState state = getOrCreateState(player);
+        state.pendingLastStandReplacement = false;
+        state.pendingLastStandHealth = 0.0F;
         if (state.forcingDeath || !hasHunterScythe(player)) {
             return;
         }
 
+        boolean hadActiveBlackHearts = state.hasActiveBlackHearts();
         float blackAmount = Math.max(0.0F, appliedDamage - Math.max(0.0F, absorbedDamage));
         if (blackAmount <= 0.0F) {
             return;
         }
 
-        long now = ((ServerWorld) player.getEntityWorld()).getServer().getTicks();
-        state.batches.add(new BlackHeartBatch(blackAmount, now, now + HunterScytheItem.getBlackHeartDurationTicks()));
-        clampBlackHeartsToMaxTotal(player, state);
+        if (!HunterScytheItem.isHuntingMomentEnabled() && hadActiveBlackHearts) {
+            if (state.lastStand || player.getHealth() <= LAST_STAND_HEALTH + 0.001F) {
+                replaceBlackHearts(player, state, Math.max(0.0F, preDamageHealth));
+                syncDisplay(player, state);
+                return;
+            }
+
+            if (player.getHealth() <= 0.0F) {
+                state.pendingLastStandReplacement = true;
+                state.pendingLastStandHealth = Math.max(0.0F, preDamageHealth);
+                return;
+            }
+
+            float recalculatedBlackHearts = Math.max(0.0F, player.getMaxHealth() - Math.max(0.0F, player.getHealth()));
+            replaceBlackHearts(player, state, recalculatedBlackHearts);
+            syncDisplay(player, state);
+            return;
+        }
+
+        addBlackHeartBatch(player, state, blackAmount);
         syncDisplay(player, state);
     }
 
@@ -333,6 +359,22 @@ public final class HunterScytheManager {
         state.batches.removeIf(batch -> batch.amountRemaining <= 0.0F);
     }
 
+    private static void addBlackHeartBatch(ServerPlayerEntity player, PlayerBlackHeartState state, float blackAmount) {
+        long now = ((ServerWorld) player.getEntityWorld()).getServer().getTicks();
+        state.batches.add(new BlackHeartBatch(blackAmount, now, now + HunterScytheItem.getBlackHeartDurationTicks()));
+        clampBlackHeartsToMaxTotal(player, state);
+    }
+
+    private static void replaceBlackHearts(ServerPlayerEntity player, PlayerBlackHeartState state, float blackAmount) {
+        state.batches.clear();
+
+        if (blackAmount <= 0.0F) {
+            return;
+        }
+
+        addBlackHeartBatch(player, state, blackAmount);
+    }
+
     private static void syncDisplay(PlayerEntity player, PlayerBlackHeartState state) {
         if (!(player instanceof HunterScytheTrackedPlayer trackedPlayer)) {
             return;
@@ -363,10 +405,14 @@ public final class HunterScytheManager {
         private final List<BlackHeartBatch> batches = new ArrayList<>();
         private boolean lastStand;
         private boolean forcingDeath;
+        private boolean pendingLastStandReplacement;
+        private float pendingLastStandHealth;
 
         private void clear() {
             batches.clear();
             lastStand = false;
+            pendingLastStandReplacement = false;
+            pendingLastStandHealth = 0.0F;
         }
 
         private boolean hasActiveBlackHearts() {

@@ -24,6 +24,8 @@ public abstract class PlayerEntityMixin implements HunterScytheTrackedPlayer {
 
     @Unique
     private float arena$preApplyAbsorption;
+    @Unique
+    private float arena$preApplyHealth;
 
     @Inject(method = "initDataTracker", at = @At("TAIL"))
     private void arena$initHunterScytheTrackedData(DataTracker.Builder builder, CallbackInfo ci) {
@@ -33,6 +35,7 @@ public abstract class PlayerEntityMixin implements HunterScytheTrackedPlayer {
 
     @Inject(method = "applyDamage", at = @At("HEAD"))
     private void arena$capturePreApplyState(ServerWorld world, net.minecraft.entity.damage.DamageSource source, float amount, CallbackInfo ci) {
+        arena$preApplyHealth = ((PlayerEntity) (Object) this).getHealth();
         arena$preApplyAbsorption = ((PlayerEntity) (Object) this).getAbsorptionAmount();
     }
 
@@ -43,7 +46,7 @@ public abstract class PlayerEntityMixin implements HunterScytheTrackedPlayer {
         }
 
         float absorbedDamage = Math.max(0.0F, arena$preApplyAbsorption - player.getAbsorptionAmount());
-        HunterScytheManager.recordAppliedDamage(player, amount, absorbedDamage);
+        HunterScytheManager.recordAppliedDamage(player, amount, absorbedDamage, arena$preApplyHealth);
     }
 
     @Inject(method = "canFoodHeal", at = @At("HEAD"), cancellable = true)
