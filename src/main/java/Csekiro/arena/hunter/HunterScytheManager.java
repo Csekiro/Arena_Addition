@@ -7,6 +7,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.damage.DamageTypes;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
@@ -46,6 +47,10 @@ public final class HunterScytheManager {
                 return true;
             }
 
+            if (shouldBypassLastStand(source)) {
+                return true;
+            }
+
             PlayerBlackHeartState state = STATES.get(player.getUuid());
             if (!HunterScytheItem.isLastStandEnabled() || state == null || !state.lastStand || state.forcingDeath) {
                 return true;
@@ -57,6 +62,10 @@ public final class HunterScytheManager {
 
         ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
             if (!(entity instanceof ServerPlayerEntity player)) {
+                return true;
+            }
+
+            if (shouldBypassLastStand(source)) {
                 return true;
             }
 
@@ -94,11 +103,12 @@ public final class HunterScytheManager {
 
     public static void prepareAppliedDamage(
             ServerPlayerEntity player,
+            DamageSource source,
             float incomingDamage,
             float preDamageAbsorption,
             float preDamageHealth
     ) {
-        if (HunterScytheItem.isHuntingMomentEnabled() || incomingDamage <= 0.0F) {
+        if (HunterScytheItem.isHuntingMomentEnabled() || incomingDamage <= 0.0F || shouldBypassLastStand(source)) {
             return;
         }
 
@@ -132,11 +142,12 @@ public final class HunterScytheManager {
 
     public static void recordAppliedDamage(
             ServerPlayerEntity player,
+            DamageSource source,
             float appliedDamage,
             float absorbedDamage,
             float preDamageHealth
     ) {
-        if (appliedDamage <= 0.0F) {
+        if (appliedDamage <= 0.0F || shouldBypassLastStand(source)) {
             return;
         }
 
@@ -347,6 +358,10 @@ public final class HunterScytheManager {
         return preDamageHealth > 0.0F && effectiveDamage >= preDamageHealth;
     }
 
+    private static boolean shouldBypassLastStand(DamageSource source) {
+        return source.isOf(DamageTypes.OUT_OF_WORLD) || source.isOf(DamageTypes.GENERIC_KILL);
+    }
+
     private static boolean isDirectMeleeAttack(ServerPlayerEntity player, DamageSource source) {
         return source.getSource() == player;
     }
@@ -383,7 +398,7 @@ public final class HunterScytheManager {
     }
 
     private static void clampBlackHeartsToMaxTotal(ServerPlayerEntity player, PlayerBlackHeartState state) {
-        float effectiveRedHealth = state.lastStand ? 0.0F : player.getHealth();
+        float effectiveRedHealth = getOccupiedHealthForBlackHeartCap(player, state);
         float allowedBlackHearts = Math.max(0.0F, player.getMaxHealth() - effectiveRedHealth);
         float overflow = state.getTotalBlackHearts() - allowedBlackHearts;
 
@@ -405,6 +420,14 @@ public final class HunterScytheManager {
         }
 
         state.batches.removeIf(batch -> batch.amountRemaining <= 0.0F);
+    }
+
+    private static float getOccupiedHealthForBlackHeartCap(ServerPlayerEntity player, PlayerBlackHeartState state) {
+        if (state.lastStand) {
+            return LAST_STAND_HEALTH;
+        }
+
+        return Math.max(0.0F, player.getHealth());
     }
 
     private static void syncDisplay(PlayerEntity player, PlayerBlackHeartState state) {

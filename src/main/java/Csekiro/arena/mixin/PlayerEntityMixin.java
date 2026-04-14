@@ -40,7 +40,7 @@ public abstract class PlayerEntityMixin implements HunterScytheTrackedPlayer {
         arena$preApplyHealth = player.getHealth();
 
         if ((Object) this instanceof ServerPlayerEntity serverPlayer) {
-            HunterScytheManager.prepareAppliedDamage(serverPlayer, amount, arena$preApplyAbsorption, arena$preApplyHealth);
+            HunterScytheManager.prepareAppliedDamage(serverPlayer, source, amount, arena$preApplyAbsorption, arena$preApplyHealth);
         }
     }
 
@@ -51,7 +51,7 @@ public abstract class PlayerEntityMixin implements HunterScytheTrackedPlayer {
         }
 
         float absorbedDamage = Math.max(0.0F, arena$preApplyAbsorption - player.getAbsorptionAmount());
-        HunterScytheManager.recordAppliedDamage(player, amount, absorbedDamage, arena$preApplyHealth);
+        HunterScytheManager.recordAppliedDamage(player, source, amount, absorbedDamage, arena$preApplyHealth);
     }
 
     @Inject(method = "canFoodHeal", at = @At("HEAD"), cancellable = true)
