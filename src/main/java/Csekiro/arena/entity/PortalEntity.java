@@ -160,9 +160,7 @@ public class PortalEntity extends Entity {
         Direction heightAxis = this.dataTracker.get(HEIGHT_AXIS);
         Direction widthAxis = this.dataTracker.get(WIDTH_AXIS);
         return new PortalPose(
-                basePos.toCenterPos()
-                        .add(PortalMath.vec(heightAxis).multiply(0.5D))
-                        .add(PortalMath.vec(normal).multiply(PortalPose.SURFACE_EPSILON)),
+                PortalPlacementRules.computeCenter(basePos, normal, heightAxis),
                 normal,
                 heightAxis,
                 widthAxis,

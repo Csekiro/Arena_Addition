@@ -28,23 +28,15 @@ public final class PortalPlacementRules {
         ServerWorld world = player.getEntityWorld();
         Direction heightAxis = Direction.UP;
         Direction widthAxis = chooseWallWidthAxis(player, face);
-        BlockPos primaryBase = hitPos.y - pos.getY() > 0.5D ? pos.down() : pos;
-        BlockPos fallbackBase = primaryBase.equals(pos) ? pos.down() : pos;
-
-        PortalPose primaryPose = createPose(primaryBase, face, heightAxis, widthAxis);
-        if (hasSupport(world, primaryPose)) {
-            return primaryPose;
-        }
-
-        PortalPose fallbackPose = createPose(fallbackBase, face, heightAxis, widthAxis);
-        return hasSupport(world, fallbackPose) ? fallbackPose : null;
+        PortalPose pose = createPose(pos, face, heightAxis, widthAxis);
+        return canPlaceWall(world, pos) ? pose : null;
     }
 
     public static PortalPose buildFloorOrCeilingPose(ServerPlayerEntity player, BlockPos pos, Direction face) {
         Direction heightAxis = player.getHorizontalFacing();
         Direction widthAxis = PortalMath.cross(face, heightAxis);
         PortalPose pose = createPose(pos, face, heightAxis, widthAxis);
-        return hasSupport(player.getEntityWorld(), pose) ? pose : null;
+        return canPlaceFloorOrCeiling(player.getEntityWorld(), pos, heightAxis) ? pose : null;
     }
 
     public static boolean validatePlacement(ServerWorld world, PortalPose pose) {
@@ -56,15 +48,18 @@ public final class PortalPlacementRules {
             return false;
         }
 
-        if (!world.isSpaceEmpty(pose.exitClearanceBox())) {
-            return false;
-        }
-
         return world.getOtherEntities(null, pose.portalPlaneBox(), entity -> entity instanceof PortalEntity).isEmpty();
     }
 
     public static boolean hasSupport(ServerWorld world, PortalPose pose) {
-        return isSupportBlock(world, pose.hostBasePos()) && isSupportBlock(world, pose.upperSupportPos());
+        if (!isSupportBlock(world, pose.hostBasePos())) {
+            return false;
+        }
+
+        return switch (pose.normal()) {
+            case UP, DOWN -> isNoCollisionBlock(world, pose.hostBasePos().offset(pose.heightAxis()));
+            default -> isNoCollisionBlock(world, pose.hostBasePos().up());
+        };
     }
 
     public static boolean isHostStillValid(ServerWorld world, PortalPose pose) {
@@ -72,10 +67,14 @@ public final class PortalPlacementRules {
     }
 
     private static PortalPose createPose(BlockPos basePos, Direction normal, Direction heightAxis, Direction widthAxis) {
-        Vec3d center = basePos.toCenterPos()
-                .add(PortalMath.vec(heightAxis).multiply(0.5D))
-                .add(PortalMath.vec(normal).multiply(PortalPose.SURFACE_EPSILON));
+        Vec3d center = computeCenter(basePos, normal, heightAxis);
         return new PortalPose(center, normal, heightAxis, widthAxis, basePos.toImmutable(), normal);
+    }
+
+    public static Vec3d computeCenter(BlockPos basePos, Direction normal, Direction heightAxis) {
+        return basePos.toCenterPos()
+                .add(PortalMath.vec(heightAxis).multiply(0.5D))
+                .add(PortalMath.vec(normal).multiply(0.5D + PortalPose.SURFACE_EPSILON));
     }
 
     private static Direction chooseWallWidthAxis(ServerPlayerEntity player, Direction face) {
@@ -90,5 +89,17 @@ public final class PortalPlacementRules {
     private static boolean isSupportBlock(ServerWorld world, BlockPos pos) {
         BlockState state = world.getBlockState(pos);
         return !state.isAir() && !state.getCollisionShape(world, pos).isEmpty();
+    }
+
+    private static boolean isNoCollisionBlock(ServerWorld world, BlockPos pos) {
+        return world.getBlockState(pos).getCollisionShape(world, pos).isEmpty();
+    }
+
+    private static boolean canPlaceWall(ServerWorld world, BlockPos pos) {
+        return isSupportBlock(world, pos) && isNoCollisionBlock(world, pos.up());
+    }
+
+    private static boolean canPlaceFloorOrCeiling(ServerWorld world, BlockPos pos, Direction forward) {
+        return isSupportBlock(world, pos) && isNoCollisionBlock(world, pos.offset(forward));
     }
 }
