@@ -35,8 +35,13 @@ public abstract class PlayerEntityMixin implements HunterScytheTrackedPlayer {
 
     @Inject(method = "applyDamage", at = @At("HEAD"))
     private void arena$capturePreApplyState(ServerWorld world, net.minecraft.entity.damage.DamageSource source, float amount, CallbackInfo ci) {
-        arena$preApplyHealth = ((PlayerEntity) (Object) this).getHealth();
-        arena$preApplyAbsorption = ((PlayerEntity) (Object) this).getAbsorptionAmount();
+        PlayerEntity player = (PlayerEntity) (Object) this;
+        arena$preApplyAbsorption = player.getAbsorptionAmount();
+        arena$preApplyHealth = player.getHealth();
+
+        if ((Object) this instanceof ServerPlayerEntity serverPlayer) {
+            HunterScytheManager.prepareAppliedDamage(serverPlayer, amount, arena$preApplyAbsorption, arena$preApplyHealth);
+        }
     }
 
     @Inject(method = "applyDamage", at = @At("TAIL"))

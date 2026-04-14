@@ -12,8 +12,6 @@ import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
 import net.minecraft.util.collection.DefaultedList;
 import net.minecraft.util.math.MathHelper;
 
@@ -71,13 +69,7 @@ public final class HunterScytheManager {
             player.setHealth(LAST_STAND_HEALTH);
             player.hurtTime = 0;
             player.maxHurtTime = 0;
-            if (!HunterScytheItem.isHuntingMomentEnabled() && state.pendingLastStandReplacement) {
-                replaceBlackHearts(player, state, state.pendingLastStandHealth);
-            } else {
-                clampBlackHeartsToMaxTotal(player, state);
-            }
-            state.pendingLastStandReplacement = false;
-            state.pendingLastStandHealth = 0.0F;
+            clampBlackHeartsToMaxTotal(player, state);
             player.markHealthDirty();
             syncDisplay(player, state);
             return false;
@@ -100,44 +92,91 @@ public final class HunterScytheManager {
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> clear(handler.player));
     }
 
-    public static void recordAppliedDamage(ServerPlayerEntity player, float appliedDamage, float absorbedDamage, float preDamageHealth) {
+    public static void prepareAppliedDamage(
+            ServerPlayerEntity player,
+            float incomingDamage,
+            float preDamageAbsorption,
+            float preDamageHealth
+    ) {
+        if (HunterScytheItem.isHuntingMomentEnabled() || incomingDamage <= 0.0F) {
+            return;
+        }
+
+        boolean enteringLastStand = willEnterLastStand(incomingDamage, preDamageAbsorption, preDamageHealth);
+        PlayerBlackHeartState state = STATES.get(player.getUuid());
+        if (state != null && state.forcingDeath) {
+            return;
+        }
+
+        if (state == null && !enteringLastStand) {
+            return;
+        }
+
+        if (!hasHunterScythe(player)) {
+            return;
+        }
+
+        if (state != null && state.hasActiveBlackHearts()) {
+            state.clear();
+        }
+
+        if (!enteringLastStand) {
+            return;
+        }
+
+        PlayerBlackHeartState lethalState = getOrCreateState(player);
+        long now = ((ServerWorld) player.getEntityWorld()).getServer().getTicks();
+        lethalState.clear();
+        lethalState.batches.add(new BlackHeartBatch(preDamageHealth, now, now + HunterScytheItem.getBlackHeartDurationTicks()));
+    }
+
+    public static void recordAppliedDamage(
+            ServerPlayerEntity player,
+            float appliedDamage,
+            float absorbedDamage,
+            float preDamageHealth
+    ) {
         if (appliedDamage <= 0.0F) {
             return;
         }
 
-        PlayerBlackHeartState state = getOrCreateState(player);
-        state.pendingLastStandReplacement = false;
-        state.pendingLastStandHealth = 0.0F;
+        PlayerBlackHeartState state = STATES.get(player.getUuid());
+        if (state != null && state.forcingDeath) {
+            return;
+        }
+
+        if (!hasHunterScythe(player)) {
+            return;
+        }
+
+        long now = ((ServerWorld) player.getEntityWorld()).getServer().getTicks();
+        if (!HunterScytheItem.isHuntingMomentEnabled() && HunterScytheItem.isLastStandEnabled() && player.getHealth() <= 0.0F) {
+            PlayerBlackHeartState lethalState = getOrCreateState(player);
+            lethalState.clear();
+            lethalState.batches.add(new BlackHeartBatch(preDamageHealth, now, now + HunterScytheItem.getBlackHeartDurationTicks()));
+            clampBlackHeartsToMaxTotal(player, lethalState);
+            syncDisplay(player, lethalState);
+            return;
+        }
+
+        state = getOrCreateState(player);
         if (state.forcingDeath || !hasHunterScythe(player)) {
             return;
         }
 
-        boolean hadActiveBlackHearts = state.hasActiveBlackHearts();
         float blackAmount = Math.max(0.0F, appliedDamage - Math.max(0.0F, absorbedDamage));
         if (blackAmount <= 0.0F) {
-            return;
-        }
-
-        if (!HunterScytheItem.isHuntingMomentEnabled() && hadActiveBlackHearts) {
-            if (state.lastStand || player.getHealth() <= LAST_STAND_HEALTH + 0.001F) {
-                replaceBlackHearts(player, state, Math.max(0.0F, preDamageHealth));
+            if (!state.hasActiveBlackHearts()) {
+                STATES.remove(player.getUuid());
+                syncDisplay(player, new PlayerBlackHeartState());
+            } else {
                 syncDisplay(player, state);
-                return;
             }
-
-            if (player.getHealth() <= 0.0F) {
-                state.pendingLastStandReplacement = true;
-                state.pendingLastStandHealth = Math.max(0.0F, preDamageHealth);
-                return;
-            }
-
-            float recalculatedBlackHearts = Math.max(0.0F, player.getMaxHealth() - Math.max(0.0F, player.getHealth()));
-            replaceBlackHearts(player, state, recalculatedBlackHearts);
-            syncDisplay(player, state);
             return;
         }
 
-        addBlackHeartBatch(player, state, blackAmount);
+        state.batches.add(new BlackHeartBatch(blackAmount, now, now + HunterScytheItem.getBlackHeartDurationTicks()));
+        clampBlackHeartsToMaxTotal(player, state);
         syncDisplay(player, state);
     }
 
@@ -299,6 +338,15 @@ public final class HunterScytheManager {
         return MathHelper.clamp(recoveryAmount, 0.0F, HunterScytheItem.getBlackHeartRecoveryCap());
     }
 
+    private static boolean willEnterLastStand(float incomingDamage, float preDamageAbsorption, float preDamageHealth) {
+        if (!HunterScytheItem.isLastStandEnabled()) {
+            return false;
+        }
+
+        float effectiveDamage = Math.max(0.0F, incomingDamage - Math.max(0.0F, preDamageAbsorption));
+        return preDamageHealth > 0.0F && effectiveDamage >= preDamageHealth;
+    }
+
     private static boolean isDirectMeleeAttack(ServerPlayerEntity player, DamageSource source) {
         return source.getSource() == player;
     }
@@ -359,22 +407,6 @@ public final class HunterScytheManager {
         state.batches.removeIf(batch -> batch.amountRemaining <= 0.0F);
     }
 
-    private static void addBlackHeartBatch(ServerPlayerEntity player, PlayerBlackHeartState state, float blackAmount) {
-        long now = ((ServerWorld) player.getEntityWorld()).getServer().getTicks();
-        state.batches.add(new BlackHeartBatch(blackAmount, now, now + HunterScytheItem.getBlackHeartDurationTicks()));
-        clampBlackHeartsToMaxTotal(player, state);
-    }
-
-    private static void replaceBlackHearts(ServerPlayerEntity player, PlayerBlackHeartState state, float blackAmount) {
-        state.batches.clear();
-
-        if (blackAmount <= 0.0F) {
-            return;
-        }
-
-        addBlackHeartBatch(player, state, blackAmount);
-    }
-
     private static void syncDisplay(PlayerEntity player, PlayerBlackHeartState state) {
         if (!(player instanceof HunterScytheTrackedPlayer trackedPlayer)) {
             return;
@@ -405,14 +437,10 @@ public final class HunterScytheManager {
         private final List<BlackHeartBatch> batches = new ArrayList<>();
         private boolean lastStand;
         private boolean forcingDeath;
-        private boolean pendingLastStandReplacement;
-        private float pendingLastStandHealth;
 
         private void clear() {
             batches.clear();
             lastStand = false;
-            pendingLastStandReplacement = false;
-            pendingLastStandHealth = 0.0F;
         }
 
         private boolean hasActiveBlackHearts() {

@@ -31,9 +31,9 @@ public final class ModItems {
             "hunter_scythe",
             HunterScytheItem::new,
             new Item.Settings()
-                    .maxCount(1)
-                    .attributeModifiers(
+                    .maxCount(1).attributeModifiers(
                             AttributeModifiersComponent.builder()
+                                    // 注意 1.21 的写法：EntityAttributes.ATTACK_DAMAGE
                                     .add(EntityAttributes.ATTACK_DAMAGE,
                                             new EntityAttributeModifier(
                                                     Identifier.of("arena_", "base_attack_damage"),
