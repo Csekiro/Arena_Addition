@@ -4,6 +4,8 @@
   "package": "Csekiro.arena.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "GameRendererMixin",
+    "MinecraftClientAccessor",
     "InGameHudMixin"
   ],
   "injectors": {

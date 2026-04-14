@@ -13,6 +13,9 @@
     "fabric-datagen": [
       "Csekiro.arena.client.ArenaDataGenerator"
     ],
+    "client": [
+      "Csekiro.arena.client.ArenaClient"
+    ],
     "main": [
       "Csekiro.arena.Arena"
     ]

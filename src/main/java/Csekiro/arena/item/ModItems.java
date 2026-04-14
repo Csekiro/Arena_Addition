@@ -51,6 +51,12 @@ public final class ModItems {
                     )
     );
 
+    public static final Item PORTAL_GUN = register(
+            "portal_gun",
+            settings -> new PortalGunItem(settings, true, true),
+            new Item.Settings().maxCount(1)
+    );
+
     private static Item register(String path, Function<Item.Settings, Item> factory, Item.Settings settings) {
         RegistryKey<Item> key = RegistryKey.of(RegistryKeys.ITEM, Identifier.of(Arena.MOD_ID, path));
         return Items.register(key, factory, settings);
@@ -61,6 +67,7 @@ public final class ModItems {
                 .register(entries -> {
                     entries.add(ENDER_PEARL_PRO);
                     entries.add(HUNTER_SCYTHE);
+                    entries.add(PORTAL_GUN);
                 });
     }
 }

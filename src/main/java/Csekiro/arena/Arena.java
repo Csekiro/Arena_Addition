@@ -1,5 +1,8 @@
 package Csekiro.arena;
 
+import Csekiro.arena.entity.ModEntityTypes;
+import Csekiro.arena.event.PortalInteractionEvents;
+import Csekiro.arena.event.PortalLifecycleEvents;
 import Csekiro.arena.hunter.HunterScytheManager;
 import Csekiro.arena.item.ModItems;
 import net.fabricmc.api.ModInitializer;
@@ -14,6 +17,9 @@ public class Arena implements ModInitializer {
     public void onInitialize() {
         LOGGER.info("[Arena] onInitialize start");
         ModItems.initialize();
+        ModEntityTypes.initialize();
+        PortalInteractionEvents.initialize();
+        PortalLifecycleEvents.initialize();
         HunterScytheManager.initialize();
         LOGGER.info("[Arena] onInitialize done");
     }
