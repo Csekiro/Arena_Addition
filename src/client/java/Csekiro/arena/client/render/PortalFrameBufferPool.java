@@ -1,26 +1,75 @@
 package Csekiro.arena.client.render;
 
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.SimpleFramebuffer;
-import net.minecraft.client.util.Window;
+import net.minecraft.util.Identifier;
+
+import java.util.Arrays;
 
 public final class PortalFrameBufferPool {
-    private SimpleFramebuffer framebuffer;
-    private int width = -1;
-    private int height = -1;
+    private static final int POOL_SIZE = 4;
+    private final PooledFramebuffer[] pool = new PooledFramebuffer[POOL_SIZE];
+    private final boolean[] inUse = new boolean[POOL_SIZE];
 
-    public SimpleFramebuffer get(Window window) {
-        int targetWidth = Math.max(320, Math.min(960, window.getFramebufferWidth() / 2));
-        int targetHeight = Math.max(180, Math.min(540, window.getFramebufferHeight() / 2));
-        if (this.framebuffer == null) {
-            this.framebuffer = new SimpleFramebuffer("Portal View", targetWidth, targetHeight, true);
-            this.width = targetWidth;
-            this.height = targetHeight;
-        } else if (this.width != targetWidth || this.height != targetHeight) {
-            this.framebuffer.resize(targetWidth, targetHeight);
-            this.width = targetWidth;
-            this.height = targetHeight;
+    public void beginFrame() {
+        Arrays.fill(this.inUse, false);
+    }
+
+    public PooledFramebuffer acquire(MinecraftClient client, int width, int height) {
+        for (int i = 0; i < this.pool.length; i++) {
+            if (this.inUse[i]) {
+                continue;
+            }
+
+            this.inUse[i] = true;
+            if (this.pool[i] == null) {
+                this.pool[i] = new PooledFramebuffer(client, i, width, height);
+            } else {
+                this.pool[i].resize(width, height);
+            }
+
+            return this.pool[i];
         }
 
-        return this.framebuffer;
+        return null;
+    }
+
+    public static final class PooledFramebuffer {
+        private final SimpleFramebuffer framebuffer;
+        private final PortalFramebufferTexture texture;
+        private final Identifier textureId;
+        private int width;
+        private int height;
+
+        private PooledFramebuffer(MinecraftClient client, int index, int width, int height) {
+            this.framebuffer = new SimpleFramebuffer("Portal View " + index, width, height, true);
+            this.texture = new PortalFramebufferTexture();
+            this.textureId = Identifier.of("arena", "dynamic/portal_pool/" + index);
+            client.getTextureManager().registerTexture(this.textureId, this.texture);
+            this.width = width;
+            this.height = height;
+        }
+
+        public void resize(int width, int height) {
+            if (this.width == width && this.height == height) {
+                return;
+            }
+
+            this.framebuffer.resize(width, height);
+            this.width = width;
+            this.height = height;
+        }
+
+        public void copyToSampledTexture() {
+            this.texture.copyFrom(this.framebuffer);
+        }
+
+        public SimpleFramebuffer framebuffer() {
+            return this.framebuffer;
+        }
+
+        public Identifier textureId() {
+            return this.textureId;
+        }
     }
 }

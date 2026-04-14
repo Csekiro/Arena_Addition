@@ -1,28 +1,22 @@
 package Csekiro.arena.client.render;
 
-import Csekiro.arena.mixin.client.MinecraftClientAccessor;
 import Csekiro.arena.entity.PortalEntity;
 import Csekiro.arena.portal.PortalMath;
 import Csekiro.arena.portal.PortalPose;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.gl.SimpleFramebuffer;
 import net.minecraft.client.render.Camera;
+import net.minecraft.client.render.Frustum;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.client.util.ObjectAllocator;
-import net.minecraft.client.util.ScreenshotRecorder;
 import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.Entity;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
-import org.joml.Quaternionf;
 import org.joml.Vector4f;
 
 import java.util.ArrayList;
@@ -38,8 +32,9 @@ public final class PortalRenderManager {
     private static final Identifier WHITE_TEXTURE = Identifier.of("arena", "dynamic/portal_white");
 
     private final PortalFrameBufferPool frameBufferPool = new PortalFrameBufferPool();
-    private final Map<UUID, PortalTextureEntry> portalTextures = new HashMap<>();
+    private final Map<UUID, Identifier> frameTextureCache = new HashMap<>();
     private final PortalCamera portalCamera = new PortalCamera();
+    private final ExitSceneRenderer exitSceneRenderer = new ExitSceneRenderer();
     private boolean initialized;
     private boolean capturing;
 
@@ -62,13 +57,9 @@ public final class PortalRenderManager {
         return this.capturing;
     }
 
-    public Identifier getPortalTexture(PortalEntity portal) {
-        if (!hasClientPair(portal)) {
-            return BLACK_TEXTURE;
-        }
-
-        PortalTextureEntry entry = this.portalTextures.get(portal.getUuid());
-        return entry == null ? BLACK_TEXTURE : entry.textureId;
+    @Nullable
+    public Identifier getFrameTexture(PortalEntity portal) {
+        return this.frameTextureCache.get(portal.getUuid());
     }
 
     public Identifier getWhiteTexture() {
@@ -100,24 +91,54 @@ public final class PortalRenderManager {
         }
 
         ensureSolidTextures(client);
-        List<PortalEntity> visiblePortals = collectVisiblePortals(client.world, camera.getPos());
+        beginFrame();
+        Frustum frustum = new Frustum(new Matrix4f(positionMatrix), new Matrix4f(projectionMatrix));
+        Vec3d cameraPos = camera.getPos();
+        frustum.setPosition(cameraPos.x, cameraPos.y, cameraPos.z);
+        List<PortalEntity> visiblePortals = collectVisiblePortals(client.world, cameraPos, frustum);
         if (visiblePortals.isEmpty()) {
             return;
         }
 
-        Matrix4f mainProjection = new Matrix4f(worldProjectionMatrix);
-        Framebuffer originalFramebuffer = client.getFramebuffer();
-        for (PortalEntity portal : visiblePortals) {
-            PortalEntity pair = findClientPair(portal);
-            if (pair == null) {
-                continue;
+        int targetWidth = Math.max(1, Math.round(client.getWindow().getFramebufferWidth() * PortalRenderConfig.framebufferScale()));
+        int targetHeight = Math.max(1, Math.round(client.getWindow().getFramebufferHeight() * PortalRenderConfig.framebufferScale()));
+        this.capturing = true;
+        try {
+            for (PortalEntity portal : visiblePortals) {
+                PortalEntity pair = findClientPair(portal);
+                if (pair == null) {
+                    continue;
+                }
+
+                PortalFrameBufferPool.PooledFramebuffer target = this.frameBufferPool.acquire(client, targetWidth, targetHeight);
+                if (target == null) {
+                    break;
+                }
+
+                Vec3d mappedCameraPos = mapCameraPosition(cameraPos, portal.getPortalPose(), pair.getPortalPose());
+                float mappedYaw = mapCameraYaw(camera.getYaw(), portal.getPortalPose(), pair.getPortalPose());
+                if (this.exitSceneRenderer.render(
+                        client,
+                        allocator,
+                        tickCounter,
+                        this.portalCamera,
+                        target,
+                        portal,
+                        mappedCameraPos,
+                        mappedYaw,
+                        camera.getPitch(),
+                        worldProjectionMatrix,
+                        projectionMatrix,
+                        fogBuffer,
+                        fogColor,
+                        renderSky
+                )) {
+                    this.frameTextureCache.put(portal.getUuid(), target.textureId());
+                }
             }
-
-            PortalTextureEntry entry = this.portalTextures.computeIfAbsent(portal.getUuid(), uuid -> createTextureEntry(client, uuid));
-            renderPortalView(client, allocator, tickCounter, camera, portal, pair, positionMatrix, mainProjection, projectionMatrix, fogBuffer, fogColor, renderSky, originalFramebuffer, entry);
+        } finally {
+            this.capturing = false;
         }
-
-        ((MinecraftClientAccessor) client).arena$setFramebuffer(originalFramebuffer);
     }
 
     @Nullable
@@ -139,60 +160,31 @@ public final class PortalRenderManager {
                 .orElse(null);
     }
 
-    private List<PortalEntity> collectVisiblePortals(ClientWorld world, Vec3d cameraPos) {
+    private void beginFrame() {
+        this.frameTextureCache.clear();
+        this.frameBufferPool.beginFrame();
+        PortalRenderState.reset();
+    }
+
+    private List<PortalEntity> collectVisiblePortals(ClientWorld world, Vec3d cameraPos, Frustum frustum) {
         List<PortalEntity> portals = new ArrayList<>(
                 world.getEntitiesByClass(
                         PortalEntity.class,
                         world.getWorldBorder().asVoxelShape().getBoundingBox(),
-                        portal -> portal.getPortalPose().signedDistance(cameraPos) >= -0.25D && cameraPos.squaredDistanceTo(portal.getEntityPos()) <= 96.0D * 96.0D
+                        portal -> cameraPos.squaredDistanceTo(portal.getEntityPos()) <= PortalRenderConfig.maxCaptureDistance() * PortalRenderConfig.maxCaptureDistance()
+                                && hasClientPair(portal)
                 )
         );
-        portals.sort(Comparator.comparingDouble(portal -> cameraPos.squaredDistanceTo(portal.getEntityPos())));
-        return portals.size() > 4 ? portals.subList(0, 4) : portals;
-    }
-
-    private void renderPortalView(
-            MinecraftClient client,
-            ObjectAllocator allocator,
-            RenderTickCounter tickCounter,
-            Camera camera,
-            PortalEntity portal,
-            PortalEntity pair,
-            Matrix4f positionMatrix,
-            Matrix4f mainProjection,
-            Matrix4f projectionMatrix,
-            GpuBufferSlice fogBuffer,
-            Vector4f fogColor,
-            boolean renderSky,
-            Framebuffer originalFramebuffer,
-            PortalTextureEntry entry
-    ) {
-        Entity focusedEntity = camera.getFocusedEntity();
-        if (focusedEntity == null) {
-            return;
-        }
-
-        SimpleFramebuffer framebuffer = this.frameBufferPool.get(client.getWindow());
-        ((MinecraftClientAccessor) client).arena$setFramebuffer(framebuffer);
-        this.capturing = true;
-        try {
-            float tickProgress = tickCounter.getTickProgress(true);
-            Vec3d mappedCameraPos = mapCameraPosition(camera.getPos(), portal.getPortalPose(), pair.getPortalPose());
-            float mappedYaw = mapCameraYaw(camera.getYaw(), portal.getPortalPose(), pair.getPortalPose());
-            this.portalCamera.configure(client.world, focusedEntity, mappedCameraPos, mappedYaw, camera.getPitch(), tickProgress);
-
-            Matrix4f alternatePositionMatrix = new Matrix4f().rotation(this.portalCamera.getRotation().conjugate(new Quaternionf()));
-            client.worldRenderer.render(allocator, tickCounter, false, this.portalCamera, alternatePositionMatrix, mainProjection, projectionMatrix, fogBuffer, fogColor, renderSky);
-            ScreenshotRecorder.takeScreenshot(framebuffer, 1, image -> updateTexture(entry, image));
-        } finally {
-            this.capturing = false;
-            ((MinecraftClientAccessor) client).arena$setFramebuffer(originalFramebuffer);
-        }
+        portals.sort(Comparator.comparingDouble(portal -> {
+            double distance = cameraPos.squaredDistanceTo(portal.getEntityPos());
+            return frustum.isVisible(portal.getBoundingBox().expand(0.5D)) ? distance : distance + 4096.0D;
+        }));
+        return portals.size() > PortalRenderConfig.maxVisiblePortals() ? portals.subList(0, PortalRenderConfig.maxVisiblePortals()) : portals;
     }
 
     private Vec3d mapCameraPosition(Vec3d cameraPos, PortalPose inPose, PortalPose outPose) {
         Vec3d local = inPose.worldToLocalFull(cameraPos);
-        return outPose.localToWorld(local.x, local.y, Math.max(0.0D, local.z));
+        return outPose.localToWorld(local.x, local.y, local.z);
     }
 
     private float mapCameraYaw(float yaw, PortalPose inPose, PortalPose outPose) {
@@ -212,15 +204,6 @@ public final class PortalRenderManager {
         return (float) (MathHelper.atan2(-transformed.x, transformed.z) * (180.0F / Math.PI));
     }
 
-    private PortalTextureEntry createTextureEntry(MinecraftClient client, UUID uuid) {
-        NativeImageBackedTexture texture = new NativeImageBackedTexture(() -> "portal-" + uuid, 16, 16, false);
-        fillImage(texture.getImage(), 0xFF000000);
-        texture.upload();
-        Identifier textureId = Identifier.of("arena", "dynamic/portal/" + uuid);
-        client.getTextureManager().registerTexture(textureId, texture);
-        return new PortalTextureEntry(textureId, texture);
-    }
-
     private void ensureSolidTextures(MinecraftClient client) {
         if (client.getTextureManager().getTexture(BLACK_TEXTURE) instanceof NativeImageBackedTexture) {
             return;
@@ -237,11 +220,6 @@ public final class PortalRenderManager {
         client.getTextureManager().registerTexture(WHITE_TEXTURE, white);
     }
 
-    private void updateTexture(PortalTextureEntry entry, NativeImage image) {
-        entry.texture.setImage(image);
-        entry.texture.upload();
-    }
-
     private void fillImage(@Nullable NativeImage image, int color) {
         if (image == null) {
             return;
@@ -254,6 +232,4 @@ public final class PortalRenderManager {
         }
     }
 
-    private record PortalTextureEntry(Identifier textureId, NativeImageBackedTexture texture) {
-    }
 }
